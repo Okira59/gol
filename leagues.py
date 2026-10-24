@@ -1,0 +1,23 @@
+# Flashscore lig yolları (https://www.flashscore.com/football/<yol>/results/)
+LEAGUES = [
+    "england/premier-league", "england/championship", "england/league-one", "england/league-two",
+    "spain/laliga", "spain/laliga2",
+    "italy/serie-a", "italy/serie-b",
+    "germany/bundesliga", "germany/2-bundesliga", "germany/3-liga",
+    "france/ligue-1", "france/ligue-2",
+    "turkey/super-lig", "turkey/1-lig",
+    "netherlands/eredivisie", "netherlands/eerste-divisie",
+    "portugal/liga-portugal", "portugal/liga-portugal-2",
+    "belgium/jupiler-pro-league", "scotland/premiership",
+    "austria/bundesliga", "switzerland/super-league",
+    "denmark/superliga", "norway/eliteserien", "sweden/allsvenskan", "finland/veikkausliiga",
+    "poland/ekstraklasa", "czech-republic/chance-liga", "greece/super-league",
+    "russia/premier-league", "ukraine/premier-league", "romania/superliga",
+    "croatia/hnl", "serbia/mozzart-bet-super-liga", "hungary/nb-i", "slovakia/nike-liga",
+    "slovenia/prva-liga", "bulgaria/efbet-league", "cyprus/cyprus-league",
+    "israel/ligat-ha-al", "ireland/premier-division",
+    "brazil/serie-a", "brazil/serie-b", "argentina/liga-profesional",
+    "usa/mls", "mexico/liga-mx", "japan/j1-league", "south-korea/k-league-1",
+    "china/super-league", "australia/a-league", "saudi-arabia/saudi-professional-league",
+    "europe/champions-league", "europe/europa-league", "europe/conference-league",
+]
