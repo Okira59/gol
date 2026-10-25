@@ -4,6 +4,9 @@ Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0)
 maçlarında aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
 - Kısa kuponlar (3'lü / 4'lü): 4 saatte bir, önümüzdeki 12 saatte başlayacak maçlardan.
 - Yüksek oranlı kuponlar (2'li / 3'lü, seçim başına 2.40-6.00 oran): günde bir kez, o günün maçlarından.
+- İY/MS kuponları: iddaa İY/MS oranını çoğu maçta yayınlamadığından Flashscore (1xBet) yaklaşan maç
+  oranlarıyla; 4 saatte bir 3'lü/4'lü, günde bir kez yüksek oranlı 2'li/3'lü. Ayrıca 9 İY/MS seçeneğinin
+  her biri için en olası maçlar listelenir.
 Çıktı: docs/gol/data/kuponlar.json
 """
 import json
@@ -24,6 +27,8 @@ HIGH_ODDS = (2.40, 6.00)
 HIGH_MIN_P = 0.20
 HIGH_HOUR = 9          # TR saati; günlük yüksek oranlı kuponlar bu saatten sonra hazırlanır
 MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
+IYMS_ODDS = (1.30, 4.00)
+IYMS_HIGH_ODDS = (4.00, 15.00)
 KEEP_DAYS = 30
 SHRINK = 40
 
@@ -188,6 +193,31 @@ def high_coupons(events, table, now):
     return make_coupons(picks, [2, 2, 3], "yuksek", now)
 
 
+def hf_only(events):
+    return [dict(e, odds={k: v for k, v in e["odds"].items() if k.startswith("hf")}) for e in events]
+
+
+def iyms_coupons(events, table, now, exclude=()):
+    c = candidates(hf_only(events), table, now + MIN_LEAD, now + SAFE_WINDOW, *IYMS_ODDS, min_n=80)
+    c = [x for x in c if x["id"] not in exclude]
+    return make_coupons(best_per_match(c, lambda x: x["p"]), [3, 4], "iyms", now)
+
+
+def iyms_high_coupons(events, table, now):
+    end = datetime.fromtimestamp(now, TR).replace(hour=23, minute=59, second=59).timestamp()
+    c = candidates(hf_only(events), table, now + MIN_LEAD, end, *IYMS_HIGH_ODDS, min_n=40)
+    return make_coupons(best_per_match(c, lambda x: x["p"]), [2, 3], "iyms_y", now)
+
+
+def iyms_top(events, table, now, per=3):
+    """Her İY/MS seçeneği için önümüzdeki 36 saatte tutma olasılığı en yüksek maçlar."""
+    c = candidates(hf_only(events), table, now + MIN_LEAD, now + 36 * 3600, 1.01, 1000, min_n=20)
+    out = {}
+    for k in ("hf" + x for x in HF):
+        out[label(k)] = sorted((x for x in c if x["k"] == k), key=lambda x: -x["p"])[:per]
+    return out
+
+
 def settle(coupons, results):
     for cp in coupons:
         if cp["status"] != "bekliyor":
@@ -231,9 +261,10 @@ def main():
             state = json.load(f)
     coupons = state.get("coupons", [])
     iddaa = load("iddaa.json")
-    settle(coupons, iddaa)
+    settle(coupons, {**load("fs_matches.json"), **iddaa})
 
     table = build_calib(load("fs_matches.json"), load("fs_odds.json"))
+    fs_events = [e for e in load("fs_upcoming.json").values() if e.get("odds")]
     events = [e for e in iddaa.values() if "fh" not in e and e.get("odds")]
     made = []
     if force or now - state.get("last_safe", 0) >= SAFE_EVERY:
@@ -248,6 +279,19 @@ def main():
         if new:
             made += new
             state["last_high_day"] = today
+    if fs_events and (force or now - state.get("last_iyms", 0) >= SAFE_EVERY):
+        used = {l["id"] for c in coupons if c["kind"] == "iyms" and c["status"] == "bekliyor" for l in c["legs"]}
+        new = iyms_coupons(fs_events, table, now, used)
+        if new:
+            made += new
+            state["last_iyms"] = now
+    if fs_events and (force or state.get("last_iyms_day") != today) and datetime.fromtimestamp(now, TR).hour >= HIGH_HOUR:
+        new = iyms_high_coupons(fs_events, table, now)
+        if new:
+            made += new
+            state["last_iyms_day"] = today
+    if fs_events:
+        state["iyms_top"] = iyms_top(fs_events, table, now)
     coupons += made
 
     cutoff = now - KEEP_DAYS * 86400
@@ -255,8 +299,8 @@ def main():
     state.update({"updated": now, "coupons": coupons})
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
-        f.write('{"updated":%d,"last_safe":%d,"last_high_day":%s,"coupons":[\n' % (
-            now, state.get("last_safe", 0), json.dumps(state.get("last_high_day"))))
+        head = {k: v for k, v in state.items() if k != "coupons"}
+        f.write(json.dumps(head, ensure_ascii=False, separators=(",", ":"))[:-1] + ',"coupons":[\n')
         f.write(",\n".join(json.dumps(c, ensure_ascii=False, separators=(",", ":")) for c in coupons))
         f.write("\n]}\n")
     print(f"kupon: {len(made)} yeni kupon, toplam {len(coupons)}")
