@@ -29,6 +29,7 @@ HIGH_HOUR = 9          # TR saati; günlük yüksek oranlı kuponlar bu saatten 
 MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
 IYMS_ODDS = (1.30, 4.00)
 IYMS_HIGH_ODDS = (4.00, 15.00)
+DAILY_ODDS = (1.20, 1.75)  # günlük 5-6 maçlık kuponlar
 KEEP_DAYS = 30
 SHRINK = 40
 
@@ -171,7 +172,7 @@ def make_coupons(picks, sizes, kind, now):
         prob, odd = 1.0, 1.0
         for l in legs:
             prob *= l["p"]
-            odd *= l["odd"]
+            odd *= l.get("odd", 1)
         out.append({"cid": f"{kind}-{now}-{len(out)}", "kind": kind, "created": now,
                     "legs": legs, "odd": round(odd, 2), "p": round(prob, 4), "status": "bekliyor"})
     return out
@@ -191,6 +192,40 @@ def high_coupons(events, table, now):
     # Geçmiş testte "değer" (p x oran) seçimi aşırı iyimser çıktı; en olası seçimler daha tutarlı.
     picks = best_per_match(c, lambda x: x["p"])
     return make_coupons(picks, [2, 2, 3], "yuksek", now)
+
+
+def day_end(now):
+    return datetime.fromtimestamp(now, TR).replace(hour=23, minute=59, second=59).timestamp()
+
+
+def daily_coupons(events, table, now):
+    c = candidates(events, table, now + MIN_LEAD, day_end(now), *DAILY_ODDS, min_n=80)
+    return make_coupons(best_per_match(c, lambda x: x["p"]), [5, 6], "gunluk", now)
+
+
+def score_coupons(now):
+    """Günün maçlarından 5'li ve 6'lı skor kuponları: her maç için İY skoru + 2. yarı skoru (+ MS skoru)."""
+    import skor as S
+    legs = []
+    for e in S.upcoming().values():
+        if not (now + MIN_LEAD <= e["ts"] < day_end(now)):
+            continue
+        r = S.predict(e["odds"])
+        if r:
+            legs.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": "sk",
+                         **S.best_score(r[0])})
+    legs.sort(key=lambda x: -x["p_ft"])
+    out = []
+    for c in make_coupons(legs, [5, 6], "skor", now):
+        p_ft, p = 1.0, 1.0
+        for l in c["legs"]:
+            p_ft *= l["p_ft"]
+            p *= l["p"]
+        c["p"] = float(f"{p:.3g}")
+        c["p_ft"] = float(f"{p_ft:.3g}")
+        c["odd"] = round(1 / p_ft, 0)
+        out.append(c)
+    return out
 
 
 def hf_only(events):
@@ -220,7 +255,8 @@ def iyms_top(events, table, now, per=3):
 
 def settle(coupons, results):
     for cp in coupons:
-        if cp["status"] != "bekliyor":
+        sk = cp["kind"] == "skor"
+        if cp["status"] != "bekliyor" and not (sk and "ms" not in cp):
             continue
         done = True
         for l in cp["legs"]:
@@ -229,6 +265,17 @@ def settle(coupons, results):
             m = results.get(l["id"])
             if not m or "fh" not in m:
                 done = False
+                continue
+            if sk:
+                if m.get("hh") is None:
+                    done = False
+                    continue
+                fh, fa, hh, ha = m["fh"], m["fa"], m["hh"], m["ha"]
+                l["r_ht"] = f"{hh}-{ha}" == l["ht"]
+                l["r_sh"] = f"{fh - hh}-{fa - ha}" == l["sh"]
+                l["r_ft"] = f"{fh}-{fa}" == l["ft"]
+                l["r"] = l["r_ht"] and l["r_sh"]
+                l["score"] = f"{hh}-{ha} / {fh}-{fa}"
                 continue
             r = outcome(l["k"], m["fh"], m["fa"], m.get("hh"), m.get("ha"))
             if r is None:
@@ -242,6 +289,13 @@ def settle(coupons, results):
             cp["status"] = "kazandı"
         elif cp["legs"] and time.time() - max(l["ts"] for l in cp["legs"]) > 4 * 86400:
             cp["status"] = "sonuçsuz"
+        if sk:
+            if any(l.get("r_ft") is False for l in cp["legs"]):
+                cp["ms"] = "kaybetti"
+            elif all(l.get("r_ft") for l in cp["legs"]):
+                cp["ms"] = "kazandı"
+            elif time.time() - max(l["ts"] for l in cp["legs"]) > 4 * 86400:
+                cp["ms"] = "sonuçsuz"
 
 
 def load(name):
@@ -279,6 +333,16 @@ def main():
         if new:
             made += new
             state["last_high_day"] = today
+    if (force or state.get("last_daily_day") != today) and datetime.fromtimestamp(now, TR).hour >= HIGH_HOUR:
+        new = daily_coupons(events, table, now)
+        if new:
+            made += new
+            state["last_daily_day"] = today
+    if (force or state.get("last_score_day") != today) and datetime.fromtimestamp(now, TR).hour >= HIGH_HOUR:
+        new = score_coupons(now)
+        if new:
+            made += new
+            state["last_score_day"] = today
     if fs_events and (force or now - state.get("last_iyms", 0) >= SAFE_EVERY):
         used = {l["id"] for c in coupons if c["kind"] == "iyms" and c["status"] == "bekliyor" for l in c["legs"]}
         new = iyms_coupons(fs_events, table, now, used)

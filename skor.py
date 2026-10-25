@@ -98,15 +98,31 @@ def summary(m):
             "2": round(float(m[gh < ga].sum()), 4)}
 
 
-def main():
-    now = time.time()
+def upcoming():
+    """Yaklaşan maçlar: Flashscore + (Flashscore'da olmayan) iddaa maçları."""
     events = {}
     for e in load("fs_upcoming.json").values():
-        events[e["id"]] = dict(e, src="Flashscore")
+        if e.get("odds"):
+            events[e["id"]] = dict(e, src="Flashscore")
     seen = {(e["ts"], e["h"][:4].lower()) for e in events.values()}
     for e in load("iddaa.json").values():
         if "fh" not in e and e.get("odds") and (e["ts"], e["h"][:4].lower()) not in seen:
             events[e["id"]] = dict(e, src="iddaa")
+    return events
+
+
+def best_score(p):
+    """En olası MS skoru ve onu oluşturan en olası İY + 2. yarı ayrımı."""
+    ft = p["ft"]
+    i, j = (int(x) for x in np.unravel_index(np.argmax(ft), ft.shape))
+    q, a, b = max((p["ht"][a, b] * p["sh"][i - a, j - b], a, b) for a in range(i + 1) for b in range(j + 1))
+    return {"ht": f"{a}-{b}", "sh": f"{i - a}-{j - b}", "ft": f"{i}-{j}", "p_ht": round(float(p["ht"][a, b]), 4),
+            "p_sh": round(float(p["sh"][i - a, j - b]), 4), "p_ft": round(float(ft[i, j]), 4), "p": round(float(q), 5)}
+
+
+def main():
+    now = time.time()
+    events = upcoming()
     out = []
     for e in events.values():
         if not (now < e["ts"] < now + 36 * 3600):
