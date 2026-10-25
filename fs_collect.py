@@ -1,4 +1,4 @@
-"""Flashscore'dan son N günün sonuçlarını ve maç öncesi oranlarını toplar.
+"""Flashscore'dan son N günün sonuçlarını ve maç öncesi Bet365 / William Hill oranlarını toplar.
 
 Kullanım: python fs_collect.py [--days 90] [--workers 8]
 Çıktı: data/fs_matches.json, data/fs_odds.json (artımlı; mevcut kayıtlar tekrar indirilmez)
@@ -18,6 +18,7 @@ UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/1
 FEED = "https://www.flashscore.com/x/feed/"
 FEED_HDR = {**UA, "x-fsign": "SW9D1eZo", "Referer": "https://www.flashscore.com/"}
 ODDS_URL = "https://global.ds.lsapp.eu/odds/pq_graphql"
+BOOKS = [16, 15]  # Flashscore bookmaker id: 16 = bet365, 15 = William Hill (bet365 önce, eksik market William Hill'den)
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 MATCHES_FILE = os.path.join(DATA, "fs_matches.json")
 ODDS_FILE = os.path.join(DATA, "fs_odds.json")
@@ -141,7 +142,7 @@ def parse_odds(js, ja, jb):
         return {}
     seen = set()
     out = {}
-    for b in sorted(blocks, key=lambda b: b.get("bookmakerId") != 417):
+    for b in sorted((b for b in blocks if b.get("bookmakerId") in BOOKS), key=lambda b: BOOKS.index(b["bookmakerId"])):
         key = (b["bettingType"], b["bettingScope"])
         if key in seen:
             continue
@@ -168,6 +169,8 @@ def parse_odds(js, ja, jb):
                 w = it.get("winner")
                 if w:
                     k = "hf" + w.replace("X", "0").replace("/", "")
+            elif bt == "CORRECT_SCORE" and it.get("score"):
+                k = f"{pre}cs{it['score'].replace(':', '-')}"
             elif bt == "BOTH_TEAMS_TO_SCORE" and sc == "FULL_TIME":
                 k = "kgv" if it.get("bothTeamsToScore") else "kgy"
             if k and k not in out:
@@ -177,7 +180,7 @@ def parse_odds(js, ja, jb):
 
 def fetch_odds(m):
     r = get(ODDS_URL, UA, {"_hash": "oce", "eventId": m["id"], "projectId": 2,
-                           "geoIpCode": "TR", "geoIpSubdivisionCode": "TR34"})
+                           "geoIpCode": "GB", "geoIpSubdivisionCode": "GB34"})
     if not r:
         return m["id"], None
     try:

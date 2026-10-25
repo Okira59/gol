@@ -17,6 +17,7 @@ from kupon import BASE, fair, load
 OUT = os.path.join(BASE, "..", "docs", "gol", "data", "skorlar.json")
 G = 8                      # 0..7 gol
 FT_KEYS = ["1", "X", "2", "o1.5", "o2.5", "o3.5", "kgv"]
+CS_W = 0.0  # Bet365 kesin skor oranı ağırlığı: 4.878 maçlık testte karıştırmak log-loss'u kötüleştirdi, kullanılmıyor
 HT_KEYS = ["i1", "iX", "i2", "io0.5", "io1.5", "io2.5"]
 
 
@@ -78,12 +79,33 @@ def conv(a, b):
     return out
 
 
-def predict(odds):
+def cs_dist(odds, pre=""):
+    """Bet365 / William Hill kesin skor oranlarından marjsız skor dağılımı (yoksa None)."""
+    m, n = np.zeros((G, G)), 0
+    for k, v in odds.items():
+        if k.startswith(pre + "cs"):
+            a, b = (int(x) for x in k[len(pre) + 2:].split("-"))
+            o = v[0] if isinstance(v, list) else v
+            if a < G and b < G and o and o > 1:
+                m[a, b] = 1 / o
+                n += 1
+    return m / m.sum() if n >= 8 else None
+
+
+def predict(odds, w=None):
     lam = lambdas(odds)
     if not lam:
         return None
+    w = CS_W if w is None else w
     ht, sh = mat(lam[0]), mat(lam[1])
     ft = conv(ht, sh)
+    if w:
+        c = cs_dist(odds, "i")
+        if c is not None:
+            ht = (1 - w) * ht + w * c
+        c = cs_dist(odds)
+        if c is not None:
+            ft = (1 - w) * ft + w * c
     return {"ht": ht, "sh": sh, "ft": ft}, lam
 
 
@@ -99,16 +121,11 @@ def summary(m):
 
 
 def upcoming():
-    """Yaklaşan maçlar: Flashscore + (Flashscore'da olmayan) iddaa maçları."""
-    events = {}
-    for e in load("fs_upcoming.json").values():
-        if e.get("odds"):
-            events[e["id"]] = dict(e, src="Flashscore")
-    seen = {(e["ts"], e["h"][:4].lower()) for e in events.values()}
-    for e in load("iddaa.json").values():
-        if "fh" not in e and e.get("odds") and (e["ts"], e["h"][:4].lower()) not in seen:
-            events[e["id"]] = dict(e, src="iddaa")
-    return events
+    """Yaklaşan iddaa maçları; iddaa'da olmayan marketler aynı maçın Bet365 / William Hill oranlarından."""
+    from kupon import with_ext
+    ev = [e for e in load("iddaa.json").values() if "fh" not in e and e.get("odds")]
+    ext = [e for e in load("fs_upcoming.json").values() if e.get("odds")]
+    return {e["id"]: dict(e, src="iddaa") for e in with_ext(ev, ext)}
 
 
 def best_score(p):

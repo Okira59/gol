@@ -1,19 +1,22 @@
 """iddaa bültenindeki yaklaşan maçlardan otomatik kupon üretir ve eski kuponları sonuçlandırır.
 
-Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0), son 3 ayın Flashscore
-maçlarında aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
+Kuponlar sadece iddaa bültenindeki maçlardan, iddaa oranlarıyla kurulur.
+Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0), son 3 ayın maçlarında (Bet365 /
+William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
 - Kısa kuponlar (3'lü / 4'lü): 4 saatte bir, önümüzdeki 12 saatte başlayacak maçlardan.
 - Yüksek oranlı kuponlar (2'li / 3'lü, seçim başına 2.40-6.00 oran): günde bir kez, o günün maçlarından.
-- İY/MS kuponları: iddaa İY/MS oranını çoğu maçta yayınlamadığından Flashscore (1xBet) yaklaşan maç
-  oranlarıyla; 4 saatte bir 3'lü/4'lü, günde bir kez yüksek oranlı 2'li/3'lü. Ayrıca 9 İY/MS seçeneğinin
+- İY/MS kuponları: iddaa maçlarından; iddaa İY/MS oranı yoksa aynı maçın Bet365 / William Hill oranıyla; 4 saatte bir 3'lü/4'lü, günde bir kez yüksek oranlı 2'li/3'lü. Ayrıca 9 İY/MS seçeneğinin
   her biri için en olası maçlar listelenir.
 Çıktı: docs/gol/data/kuponlar.json
 """
 import json
 import os
+import re
 import sys
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(BASE, "data")
@@ -150,7 +153,8 @@ def candidates(events, table, t0, t1, lo, hi, min_n):
             if n < min_n:
                 continue
             out.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"],
-                        "k": k, "pick": label(k), "odd": odd, "p": round(p, 4), "p0": round(p0, 4)})
+                        "k": k, "pick": label(k), "odd": odd, "p": round(p, 4), "p0": round(p0, 4),
+                        "bk": "Bet365/WH" if k in e.get("ext", ()) else "iddaa"})
     return out
 
 
@@ -192,6 +196,54 @@ def high_coupons(events, table, now):
     # Geçmiş testte "değer" (p x oran) seçimi aşırı iyimser çıktı; en olası seçimler daha tutarlı.
     picks = best_per_match(c, lambda x: x["p"])
     return make_coupons(picks, [2, 2, 3], "yuksek", now)
+
+
+def _norm(name):
+    t = unicodedata.normalize("NFKD", name.lower()).encode("ascii", "ignore").decode()
+    t = re.sub(r"\(.*?\)|[^a-z0-9 ]", " ", t)
+    return " ".join(w for w in t.split() if w not in ("fc", "cf", "cd", "sc", "ac", "fk", "club", "de", "u21", "u23", "u19"))
+
+
+def _sim(a, b):
+    a, b = _norm(a), _norm(b)
+    if not a or not b:
+        return 0
+    if a in b or b in a:
+        return 1
+    return SequenceMatcher(None, a, b).ratio()
+
+
+def match(events, others):
+    """(iddaa maçı, Flashscore maçı) çiftleri: aynı saat (±15 dk) + benzer takım adları."""
+    by_ts = {}
+    for x in others:
+        by_ts.setdefault(x["ts"] // 900, []).append(x)
+    out = []
+    for e in events:
+        best, bs = None, 0
+        for slot in (e["ts"] // 900 - 1, e["ts"] // 900, e["ts"] // 900 + 1):
+            for x in by_ts.get(slot, []):
+                sh, sa = _sim(e["h"], x["h"]), _sim(e["a"], x["a"])
+                sc = sh + sa
+                if (sh >= 0.85 or sa >= 0.85 or sc >= 1.3) and sc > bs:
+                    best, bs = x, sc
+        if best:
+            out.append((e, best))
+    return out
+
+
+def with_ext(events, ext_events):
+    """iddaa maçlarına aynı maçın Bet365 / William Hill oranlarını ekler.
+    iddaa'daki oran her zaman önceliklidir; sadece iddaa'da olmayan marketler eklenir."""
+    by_iid = {x["iid"]: x for x in ext_events if x.get("iid")}
+    out = []
+    for e in events:
+        x = by_iid.get(e["id"])
+        if x:
+            ext = {k: v for k, v in x["odds"].items() if k not in e["odds"]}
+            e = dict(e, odds={**e["odds"], **ext}, ext=sorted(ext))
+        out.append(e)
+    return out
 
 
 def day_end(now):
@@ -318,8 +370,9 @@ def main():
     settle(coupons, {**load("fs_matches.json"), **iddaa})
 
     table = build_calib(load("fs_matches.json"), load("fs_odds.json"))
-    fs_events = [e for e in load("fs_upcoming.json").values() if e.get("odds")]
     events = [e for e in iddaa.values() if "fh" not in e and e.get("odds")]
+    # İY/MS: iddaa maçları; iddaa İY/MS oranı yoksa aynı maçın Bet365 / William Hill oranı
+    fs_events = with_ext(events, [e for e in load("fs_upcoming.json").values() if e.get("odds")])
     made = []
     if force or now - state.get("last_safe", 0) >= SAFE_EVERY:
         used = {l["id"] for c in coupons if c["kind"] == "kisa" and c["status"] == "bekliyor" for l in c["legs"]}
