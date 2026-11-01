@@ -415,6 +415,8 @@ def main():
     coupons = state.get("coupons", [])
     iddaa = load("iddaa.json")
     settle(coupons, {**load("fs_matches.json"), **iddaa})
+    # sonuçlananlardan sadece tutan kuponlar saklanır
+    coupons = [c for c in coupons if c["status"] in ("bekliyor", "kazandı")]
 
     table = build_calib(load("fs_matches.json"), load("fs_odds.json"))
     # sadece iddaa maçları; iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 / William Hill oranından
