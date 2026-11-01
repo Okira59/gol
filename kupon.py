@@ -17,6 +17,8 @@ import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
+from itertools import combinations
+from math import prod
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(BASE, "data")
@@ -27,15 +29,18 @@ DAY_HOUR = 9           # TR saati; günün kuponları bu saatten sonra bir kez h
 MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
 HIGH_MIN_P = 0.20
 # Günde 12 kupon: her türden 2 adet, tutma olasılığı en yüksek seçimlerden.
-# (tür, seçilebilecek marketler, tek seçim oran aralığı, kupon boyları)
+# Kupon 2-5 maçlık; toplam oran en az MIN_ODD (yüksek oranda HIGH_TOTAL).
+# (tür, seçilebilecek marketler, tek seçim oran aralığı, en düşük toplam oran)
+MIN_ODD = 3.50
+HIGH_TOTAL = 10.0
+MIN_LEGS, MAX_LEGS, POOL = 2, 5, 14
 DAILY_SET = [
-    ("iyms", ["hf" + a + b for a in "102" for b in "102"], (1.30, 4.00), [3, 3]),
-    ("iyust", ["io1.5", "io2.5"], (1.01, 15.0), [3, 3]),
-    ("ust", ["o3.5", "o4.5", "o5.5"], (1.01, 15.0), [3, 3]),
-    ("ms", ["1", "X", "2"], (1.20, 3.00), [3, 3]),
-    ("yuksek", None, (2.40, 6.00), [2, 2]),
+    ("iyms", ["hf" + a + b for a in "102" for b in "102"], (1.30, 4.00), MIN_ODD),
+    ("iyust", ["io1.5", "io2.5"], (1.01, 15.0), MIN_ODD),
+    ("ust", ["o3.5", "o4.5", "o5.5"], (1.01, 15.0), MIN_ODD),
+    ("ms", ["1", "X", "2"], (1.20, 3.00), MIN_ODD),
+    ("yuksek", None, (2.40, 6.00), HIGH_TOTAL),
 ]
-SCORE_SIZES = [3, 3]
 KINDS = {k for k, *_ in DAILY_SET} | {"skor"}
 KEEP_DAYS = 30
 SHRINK = 40
@@ -172,19 +177,27 @@ def best_per_match(cands, score):
     return sorted(best.values(), key=score, reverse=True)
 
 
-def make_coupons(picks, sizes, kind, now):
-    out, i = [], 0
-    for n in sizes:
-        legs = picks[i:i + n]
-        if len(legs) < n:
+def best_coupons(picks, kind, now, min_odd, count=2):
+    """Toplam oranı >= min_odd olan, tutma olasılığı en yüksek 2-5 maçlık kuponlar (maçlar çakışmaz)."""
+    out, used = [], set()
+    for _ in range(count):
+        pool = [x for x in picks if x["id"] not in used][:POOL]
+        best = None
+        for n in range(MIN_LEGS, min(MAX_LEGS, len(pool)) + 1):
+            for legs in combinations(pool, n):
+                odd = prod(l["odd"] for l in legs)
+                if odd < min_odd:
+                    continue
+                p = prod(l["p"] for l in legs)
+                if best is None or p > best[0]:
+                    best = (p, odd, legs)
+        if not best:
             break
-        i += n
-        prob, odd = 1.0, 1.0
-        for l in legs:
-            prob *= l["p"]
-            odd *= l.get("odd", 1)
+        p, odd, legs = best
+        used |= {l["id"] for l in legs}
         out.append({"cid": f"{kind}-{now}-{len(out)}", "kind": kind, "created": now,
-                    "legs": legs, "odd": round(odd, 2), "p": round(prob, 4), "status": "bekliyor"})
+                    "legs": sorted(legs, key=lambda l: l["ts"]), "odd": round(odd, 2),
+                    "p": float(f"{p:.3g}"), "status": "bekliyor"})
     return out
 
 
@@ -244,11 +257,11 @@ def daily_set(events, table, now, t1=None):
     """Günün kuponları: DAILY_SET'teki her türden 2 kupon (aynı türde bir maç bir kez kullanılır)."""
     t1 = t1 or day_end(now)
     out = []
-    for kind, keys, (lo, hi), sizes in DAILY_SET:
+    for kind, keys, (lo, hi), min_odd in DAILY_SET:
         c = candidates(events, table, now + MIN_LEAD, t1, lo, hi, min_n=40, keys=keys)
         if kind == "yuksek":
             c = [x for x in c if x["p"] >= HIGH_MIN_P]
-        out += make_coupons(best_per_match(c, lambda x: x["p"]), sizes, kind, now)
+        out += best_coupons(best_per_match(c, lambda x: x["p"]), kind, now, min_odd)
     return out
 
 
@@ -268,20 +281,17 @@ def score_legs(events, now, t1):
         c, d = (int(x) for x in np.unravel_index(np.argmax(sh), sh.shape))
         legs.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": "sk",
                      "ht": f"{a}-{b}", "sh": f"{c}-{d}", "p_ht": round(float(ht[a, b]), 4),
-                     "p_sh": round(float(sh[c, d]), 4), "p": round(float(ht[a, b] * sh[c, d]), 5)})
+                     "p_sh": round(float(sh[c, d]), 4), "p": round(float(ht[a, b] * sh[c, d]), 5),
+                     "odd": round(1 / float(ht[a, b] * sh[c, d]), 2)})
     legs.sort(key=lambda x: -x["p"])
     return legs
 
 
 def score_coupons(events, now, t1=None):
-    out = []
-    for c in make_coupons(score_legs(events, now, t1 or day_end(now)), SCORE_SIZES, "skor", now):
-        p = 1.0
-        for l in c["legs"]:
-            p *= l["p"]
-        c["p"] = float(f"{p:.3g}")
-        c["odd"] = round(1 / p, 0)
-        out.append(c)
+    """İY + 2. yarı skor kuponları; oran = adil oran (1 / olasılık)."""
+    out = best_coupons(score_legs(events, now, t1 or day_end(now)), "skor", now, MIN_ODD)
+    for c in out:
+        c["odd"] = round(c["odd"], 0)
     return out
 
 
