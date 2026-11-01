@@ -34,6 +34,7 @@ HIGH_MIN_P = 0.20
 MIN_ODD = 3.50
 HIGH_TOTAL = 10.0
 MIN_LEGS, MAX_LEGS, POOL = 2, 5, 14
+SCORE_SIZES = [4, 5, 6]
 DAILY_SET = [
     ("iyms", ["hf" + a + b for a in "102" for b in "102"], (1.30, 4.00), MIN_ODD),
     ("iyust", ["io1.5", "io2.5"], (1.01, 15.0), MIN_ODD),
@@ -288,10 +289,18 @@ def score_legs(events, now, t1):
 
 
 def score_coupons(events, now, t1=None):
-    """İY + 2. yarı skor kuponları; oran = adil oran (1 / olasılık)."""
-    out = best_coupons(score_legs(events, now, t1 or day_end(now)), "skor", now, MIN_ODD)
-    for c in out:
-        c["odd"] = round(c["odd"], 0)
+    """İY + 2. yarı skor kuponları: 4, 5 ve 6 maçlık, en olası maçlardan (maçlar çakışmaz).
+    Oran = adil oran (1 / olasılık)."""
+    legs, out, i = score_legs(events, now, t1 or day_end(now)), [], 0
+    for n in SCORE_SIZES:
+        part = legs[i:i + n]
+        if len(part) < n:
+            break
+        i += n
+        p = prod(l["p"] for l in part)
+        out.append({"cid": f"skor-{now}-{len(out)}", "kind": "skor", "created": now,
+                    "legs": sorted(part, key=lambda l: l["ts"]), "odd": round(1 / p, 0),
+                    "p": float(f"{p:.3g}"), "status": "bekliyor"})
     return out
 
 
