@@ -31,7 +31,7 @@ HIGH_MIN_P = 0.20
 # Günde 12 kupon: her türden 2 adet, tutma olasılığı en yüksek seçimlerden.
 # Kupon 2-5 maçlık; toplam oran en az MIN_ODD (yüksek oranda HIGH_TOTAL).
 # (tür, seçilebilecek marketler, tek seçim oran aralığı, en düşük toplam oran)
-MIN_ODD = 3.50
+MIN_ODD = 5.50
 HIGH_TOTAL = 10.0
 MIN_LEGS, MAX_LEGS, POOL = 2, 5, 14
 SCORE_SIZES = [4, 5, 6]
