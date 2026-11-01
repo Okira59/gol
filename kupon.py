@@ -3,11 +3,11 @@
 Kuponlar sadece iddaa bültenindeki maçlardan, iddaa oranlarıyla kurulur.
 Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0), son 3 ayın maçlarında (Bet365 /
 William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
-- Kısa kuponlar (3'lü / 4'lü): 4 saatte bir, önümüzdeki 12 saatte başlayacak maçlardan.
-- Yüksek oranlı kuponlar (2'li / 3'lü, seçim başına 2.40-6.00 oran): günde bir kez, o günün maçlarından.
-- İY/MS kuponları: iddaa maçlarından; iddaa İY/MS oranı yoksa aynı maçın Bet365 / William Hill oranıyla; 4 saatte bir 3'lü/4'lü, günde bir kez yüksek oranlı 2'li/3'lü. Ayrıca 9 İY/MS seçeneğinin
-  her biri için en olası maçlar listelenir.
-Çıktı: docs/gol/data/kuponlar.json
+- Günde bir kez (09:00 sonrası) o günün maçlarından 12 kupon, her türden 2 adet: İY/MS, İY + 2. yarı skoru,
+  İY 1.5/2.5 Üst, 3.5/4.5/5.5 Üst, MS (1-X-2) ve yüksek oranlı (seçim başına 2.40-6.00). Her türde tutma
+  olasılığı en yüksek seçimler kullanılır. iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 /
+  William Hill oranıyla tamamlanır. Ayrıca 9 İY/MS seçeneğinin her biri için en olası maçlar listelenir.
+Çıktı: docs/gol/data/kuponlar.json, docs/gol/data/bulten.json (oran arama)
 """
 import json
 import os
@@ -23,16 +23,20 @@ DATA = os.path.join(BASE, "data")
 OUT = os.path.join(BASE, "..", "docs", "gol", "data", "kuponlar.json")
 TR = timezone(timedelta(hours=3))
 
-SAFE_EVERY = 4 * 3600 - 15 * 60
-SAFE_WINDOW = 12 * 3600
-SAFE_ODDS = (1.30, 2.10)
-HIGH_ODDS = (2.40, 6.00)
-HIGH_MIN_P = 0.20
-HIGH_HOUR = 9          # TR saati; günlük yüksek oranlı kuponlar bu saatten sonra hazırlanır
+DAY_HOUR = 9           # TR saati; günün kuponları bu saatten sonra bir kez hazırlanır
 MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
-IYMS_ODDS = (1.30, 4.00)
-IYMS_HIGH_ODDS = (4.00, 15.00)
-DAILY_ODDS = (1.20, 1.75)  # günlük 5-6 maçlık kuponlar
+HIGH_MIN_P = 0.20
+# Günde 12 kupon: her türden 2 adet, tutma olasılığı en yüksek seçimlerden.
+# (tür, seçilebilecek marketler, tek seçim oran aralığı, kupon boyları)
+DAILY_SET = [
+    ("iyms", ["hf" + a + b for a in "102" for b in "102"], (1.30, 4.00), [3, 3]),
+    ("iyust", ["io1.5", "io2.5"], (1.01, 15.0), [3, 3]),
+    ("ust", ["o3.5", "o4.5", "o5.5"], (1.01, 15.0), [3, 3]),
+    ("ms", ["1", "X", "2"], (1.20, 3.00), [3, 3]),
+    ("yuksek", None, (2.40, 6.00), [2, 2]),
+]
+SCORE_SIZES = [3, 3]
+KINDS = {k for k, *_ in DAILY_SET} | {"skor"}
 KEEP_DAYS = 30
 SHRINK = 40
 
@@ -140,12 +144,14 @@ def estimate(table, k, p0):
     return max(0.01, min(0.99, p)), n
 
 
-def candidates(events, table, t0, t1, lo, hi, min_n):
+def candidates(events, table, t0, t1, lo, hi, min_n, keys=None):
     out = []
     for e in events:
         if not (t0 <= e["ts"] < t1):
             continue
         for k, p0 in fair(e["odds"]).items():
+            if keys is not None and k not in keys:
+                continue
             odd = e["odds"][k][0] if isinstance(e["odds"][k], list) else e["odds"][k]
             if not (lo <= odd <= hi):
                 continue
@@ -180,22 +186,6 @@ def make_coupons(picks, sizes, kind, now):
         out.append({"cid": f"{kind}-{now}-{len(out)}", "kind": kind, "created": now,
                     "legs": legs, "odd": round(odd, 2), "p": round(prob, 4), "status": "bekliyor"})
     return out
-
-
-def safe_coupons(events, table, now, exclude=()):
-    c = candidates(events, table, now + MIN_LEAD, now + SAFE_WINDOW, *SAFE_ODDS, min_n=80)
-    c = [x for x in c if x["id"] not in exclude]
-    picks = best_per_match(c, lambda x: x["p"])
-    return make_coupons(picks, [3, 4, 3, 4], "kisa", now)
-
-
-def high_coupons(events, table, now):
-    end = datetime.fromtimestamp(now, TR).replace(hour=23, minute=59, second=59).timestamp()
-    c = candidates(events, table, now + MIN_LEAD, end, *HIGH_ODDS, min_n=40)
-    c = [x for x in c if x["p"] >= HIGH_MIN_P]
-    # Geçmiş testte "değer" (p x oran) seçimi aşırı iyimser çıktı; en olası seçimler daha tutarlı.
-    picks = best_per_match(c, lambda x: x["p"])
-    return make_coupons(picks, [2, 2, 3], "yuksek", now)
 
 
 def _norm(name):
@@ -250,50 +240,75 @@ def day_end(now):
     return datetime.fromtimestamp(now, TR).replace(hour=23, minute=59, second=59).timestamp()
 
 
-def daily_coupons(events, table, now):
-    c = candidates(events, table, now + MIN_LEAD, day_end(now), *DAILY_ODDS, min_n=80)
-    return make_coupons(best_per_match(c, lambda x: x["p"]), [5, 6], "gunluk", now)
+def daily_set(events, table, now, t1=None):
+    """Günün kuponları: DAILY_SET'teki her türden 2 kupon (aynı türde bir maç bir kez kullanılır)."""
+    t1 = t1 or day_end(now)
+    out = []
+    for kind, keys, (lo, hi), sizes in DAILY_SET:
+        c = candidates(events, table, now + MIN_LEAD, t1, lo, hi, min_n=40, keys=keys)
+        if kind == "yuksek":
+            c = [x for x in c if x["p"] >= HIGH_MIN_P]
+        out += make_coupons(best_per_match(c, lambda x: x["p"]), sizes, kind, now)
+    return out
 
 
-def score_coupons(now):
-    """Günün maçlarından 5'li ve 6'lı skor kuponları: her maç için İY skoru + 2. yarı skoru (+ MS skoru)."""
+def score_legs(events, now, t1):
+    """Her maç için en olası İY skoru + en olası 2. yarı skoru (MS skoru kullanılmaz)."""
+    import numpy as np
     import skor as S
     legs = []
-    for e in S.upcoming().values():
-        if not (now + MIN_LEAD <= e["ts"] < day_end(now)):
+    for e in events:
+        if not (now + MIN_LEAD <= e["ts"] < t1):
             continue
         r = S.predict(e["odds"])
-        if r:
-            legs.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": "sk",
-                         **S.best_score(r[0])})
-    legs.sort(key=lambda x: -x["p_ft"])
+        if not r:
+            continue
+        ht, sh = r[0]["ht"], r[0]["sh"]
+        a, b = (int(x) for x in np.unravel_index(np.argmax(ht), ht.shape))
+        c, d = (int(x) for x in np.unravel_index(np.argmax(sh), sh.shape))
+        legs.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": "sk",
+                     "ht": f"{a}-{b}", "sh": f"{c}-{d}", "p_ht": round(float(ht[a, b]), 4),
+                     "p_sh": round(float(sh[c, d]), 4), "p": round(float(ht[a, b] * sh[c, d]), 5)})
+    legs.sort(key=lambda x: -x["p"])
+    return legs
+
+
+def score_coupons(events, now, t1=None):
     out = []
-    for c in make_coupons(legs, [5, 6], "skor", now):
-        p_ft, p = 1.0, 1.0
+    for c in make_coupons(score_legs(events, now, t1 or day_end(now)), SCORE_SIZES, "skor", now):
+        p = 1.0
         for l in c["legs"]:
-            p_ft *= l["p_ft"]
             p *= l["p"]
         c["p"] = float(f"{p:.3g}")
-        c["p_ft"] = float(f"{p_ft:.3g}")
-        c["odd"] = round(1 / p_ft, 0)
+        c["odd"] = round(1 / p, 0)
         out.append(c)
     return out
 
 
+def bulletin(events, table, now):
+    """Oran arama için bülten: önümüzdeki 36 saatteki iddaa maçları ve tüm oranları."""
+    out = []
+    for e in sorted(events, key=lambda x: x["ts"]):
+        if not (now < e["ts"] < now + 36 * 3600):
+            continue
+        fp = fair(e["odds"])
+        o = []
+        for g in groups():
+            for k in g:
+                if k not in e["odds"]:
+                    continue
+                v = e["odds"][k]
+                odd = v[0] if isinstance(v, list) else v
+                if not odd:
+                    continue
+                p = estimate(table, k, fp[k])[0] if k in fp else None
+                o.append([label(k), odd, round(p, 3) if p else None, 1 if k in e.get("ext", ()) else 0])
+        out.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "o": o})
+    return {"updated": now, "matches": out}
+
+
 def hf_only(events):
     return [dict(e, odds={k: v for k, v in e["odds"].items() if k.startswith("hf")}) for e in events]
-
-
-def iyms_coupons(events, table, now, exclude=()):
-    c = candidates(hf_only(events), table, now + MIN_LEAD, now + SAFE_WINDOW, *IYMS_ODDS, min_n=80)
-    c = [x for x in c if x["id"] not in exclude]
-    return make_coupons(best_per_match(c, lambda x: x["p"]), [3, 4], "iyms", now)
-
-
-def iyms_high_coupons(events, table, now):
-    end = datetime.fromtimestamp(now, TR).replace(hour=23, minute=59, second=59).timestamp()
-    c = candidates(hf_only(events), table, now + MIN_LEAD, end, *IYMS_HIGH_ODDS, min_n=40)
-    return make_coupons(best_per_match(c, lambda x: x["p"]), [2, 3], "iyms_y", now)
 
 
 def iyms_top(events, table, now, per=3):
@@ -308,7 +323,8 @@ def iyms_top(events, table, now, per=3):
 def settle(coupons, results):
     for cp in coupons:
         sk = cp["kind"] == "skor"
-        if cp["status"] != "bekliyor" and not (sk and "ms" not in cp):
+        old_sk = sk and any("ft" in l for l in cp["legs"])
+        if cp["status"] != "bekliyor" and not (old_sk and "ms" not in cp):
             continue
         done = True
         for l in cp["legs"]:
@@ -325,7 +341,8 @@ def settle(coupons, results):
                 fh, fa, hh, ha = m["fh"], m["fa"], m["hh"], m["ha"]
                 l["r_ht"] = f"{hh}-{ha}" == l["ht"]
                 l["r_sh"] = f"{fh - hh}-{fa - ha}" == l["sh"]
-                l["r_ft"] = f"{fh}-{fa}" == l["ft"]
+                if "ft" in l:
+                    l["r_ft"] = f"{fh}-{fa}" == l["ft"]
                 l["r"] = l["r_ht"] and l["r_sh"]
                 l["score"] = f"{hh}-{ha} / {fh}-{fa}"
                 continue
@@ -341,7 +358,7 @@ def settle(coupons, results):
             cp["status"] = "kazandı"
         elif cp["legs"] and time.time() - max(l["ts"] for l in cp["legs"]) > 4 * 86400:
             cp["status"] = "sonuçsuz"
-        if sk:
+        if old_sk:
             if any(l.get("r_ft") is False for l in cp["legs"]):
                 cp["ms"] = "kaybetti"
             elif all(l.get("r_ft") for l in cp["legs"]):
@@ -370,45 +387,18 @@ def main():
     settle(coupons, {**load("fs_matches.json"), **iddaa})
 
     table = build_calib(load("fs_matches.json"), load("fs_odds.json"))
-    events = [e for e in iddaa.values() if "fh" not in e and e.get("odds")]
-    # İY/MS: iddaa maçları; iddaa İY/MS oranı yoksa aynı maçın Bet365 / William Hill oranı
-    fs_events = with_ext(events, [e for e in load("fs_upcoming.json").values() if e.get("odds")])
+    # sadece iddaa maçları; iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 / William Hill oranından
+    events = with_ext([e for e in iddaa.values() if "fh" not in e and e.get("odds")],
+                      [e for e in load("fs_upcoming.json").values() if e.get("odds")])
+    # eski türlerin bekleyen kuponları kaldırılır (artık günde 12 kupon)
+    coupons = [c for c in coupons if c["kind"] in KINDS or c["status"] != "bekliyor"]
     made = []
-    if force or now - state.get("last_safe", 0) >= SAFE_EVERY:
-        used = {l["id"] for c in coupons if c["kind"] == "kisa" and c["status"] == "bekliyor" for l in c["legs"]}
-        new = safe_coupons(events, table, now, used)
-        if new:
-            made += new
-            state["last_safe"] = now
     today = datetime.fromtimestamp(now, TR).date().isoformat()
-    if (force or state.get("last_high_day") != today) and datetime.fromtimestamp(now, TR).hour >= HIGH_HOUR:
-        new = high_coupons(events, table, now)
-        if new:
-            made += new
-            state["last_high_day"] = today
-    if (force or state.get("last_daily_day") != today) and datetime.fromtimestamp(now, TR).hour >= HIGH_HOUR:
-        new = daily_coupons(events, table, now)
-        if new:
-            made += new
-            state["last_daily_day"] = today
-    if (force or state.get("last_score_day") != today) and datetime.fromtimestamp(now, TR).hour >= HIGH_HOUR:
-        new = score_coupons(now)
-        if new:
-            made += new
-            state["last_score_day"] = today
-    if fs_events and (force or now - state.get("last_iyms", 0) >= SAFE_EVERY):
-        used = {l["id"] for c in coupons if c["kind"] == "iyms" and c["status"] == "bekliyor" for l in c["legs"]}
-        new = iyms_coupons(fs_events, table, now, used)
-        if new:
-            made += new
-            state["last_iyms"] = now
-    if fs_events and (force or state.get("last_iyms_day") != today) and datetime.fromtimestamp(now, TR).hour >= HIGH_HOUR:
-        new = iyms_high_coupons(fs_events, table, now)
-        if new:
-            made += new
-            state["last_iyms_day"] = today
-    if fs_events:
-        state["iyms_top"] = iyms_top(fs_events, table, now)
+    if force or (state.get("last_set_day") != today and datetime.fromtimestamp(now, TR).hour >= DAY_HOUR):
+        made = daily_set(events, table, now) + score_coupons(events, now)
+        if made:
+            state["last_set_day"] = today
+    state["iyms_top"] = iyms_top(events, table, now)
     coupons += made
 
     cutoff = now - KEEP_DAYS * 86400
@@ -420,6 +410,8 @@ def main():
         f.write(json.dumps(head, ensure_ascii=False, separators=(",", ":"))[:-1] + ',"coupons":[\n')
         f.write(",\n".join(json.dumps(c, ensure_ascii=False, separators=(",", ":")) for c in coupons))
         f.write("\n]}\n")
+    with open(os.path.join(os.path.dirname(OUT), "bulten.json"), "w", encoding="utf-8") as f:
+        json.dump(bulletin(events, table, now), f, ensure_ascii=False, separators=(",", ":"))
     print(f"kupon: {len(made)} yeni kupon, toplam {len(coupons)}")
 
 
