@@ -267,39 +267,50 @@ def daily_set(events, table, now, t1=None):
 
 
 def score_legs(events, now, t1):
-    """Her maç için en olası İY skoru + en olası 2. yarı skoru (MS skoru kullanılmaz)."""
-    import numpy as np
+    """Sadece iddaa'da '1. Yarı/Maç Sonucu Skorları' bahsi açık maçlar: her maç için
+    iddaa seçenekleri arasından en olası İY skoru + 2. yarı skoru (MS = İY + 2. yarı)."""
     import skor as S
     legs = []
     for e in events:
-        if not (now + MIN_LEAD <= e["ts"] < t1):
+        if not (now + MIN_LEAD <= e["ts"] < t1) or not e.get("hs"):
             continue
         r = S.predict(e["odds"])
         if not r:
             continue
         ht, sh = r[0]["ht"], r[0]["sh"]
-        a, b = (int(x) for x in np.unravel_index(np.argmax(ht), ht.shape))
-        c, d = (int(x) for x in np.unravel_index(np.argmax(sh), sh.shape))
+        best = None
+        for key, odd in e["hs"].items():
+            a, b, c, d = (int(x) for x in key)
+            x, y = c - a, d - b
+            if x < 0 or y < 0 or max(a, b) >= ht.shape[0] or max(x, y) >= sh.shape[0]:
+                continue
+            q = float(ht[a, b] * sh[x, y])
+            if best is None or q > best[0]:
+                best = (q, a, b, x, y, c, d, odd)
+        if not best:
+            continue
+        q, a, b, x, y, c, d, odd = best
         legs.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": "sk",
-                     "ht": f"{a}-{b}", "sh": f"{c}-{d}", "p_ht": round(float(ht[a, b]), 4),
-                     "p_sh": round(float(sh[c, d]), 4), "p": round(float(ht[a, b] * sh[c, d]), 5),
-                     "odd": round(1 / float(ht[a, b] * sh[c, d]), 2)})
-    legs.sort(key=lambda x: -x["p"])
+                     "ht": f"{a}-{b}", "sh": f"{x}-{y}", "ft": f"{c}-{d}", "p_ht": round(float(ht[a, b]), 4),
+                     "p_sh": round(float(sh[x, y]), 4), "p": round(q, 5), "odd": odd})
+    legs.sort(key=lambda l: -l["p"])
     return legs
 
 
 def score_coupons(events, now, t1=None):
     """İY + 2. yarı skor kuponları: 4, 5 ve 6 maçlık, en olası maçlardan (maçlar çakışmaz).
-    Oran = adil oran (1 / olasılık)."""
+    Oran = iddaa '1. Yarı/Maç Sonucu Skorları' oranlarının çarpımı."""
     legs, out, i = score_legs(events, now, t1 or day_end(now)), [], 0
+    distinct = len(legs) >= sum(SCORE_SIZES)  # yeterli maç yoksa kuponlar aynı en olası maçları paylaşır
     for n in SCORE_SIZES:
-        part = legs[i:i + n]
+        part = legs[i:i + n] if distinct else legs[:n]
         if len(part) < n:
             break
-        i += n
+        if distinct:
+            i += n
         p = prod(l["p"] for l in part)
         out.append({"cid": f"skor-{now}-{len(out)}", "kind": "skor", "created": now,
-                    "legs": sorted(part, key=lambda l: l["ts"]), "odd": round(1 / p, 0),
+                    "legs": sorted(part, key=lambda l: l["ts"]), "odd": round(prod(l["odd"] for l in part), 2),
                     "p": float(f"{p:.3g}"), "status": "bekliyor"})
     return out
 
@@ -414,9 +425,15 @@ def main():
     made = []
     today = datetime.fromtimestamp(now, TR).date().isoformat()
     if force or (state.get("last_set_day") != today and datetime.fromtimestamp(now, TR).hour >= DAY_HOUR):
-        made = daily_set(events, table, now) + score_coupons(events, now)
+        made = daily_set(events, table, now)
         if made:
             state["last_set_day"] = today
+    # skor kuponları: iddaa skor bahsi açtığında (günün ilk uygun turunda) bir kez
+    if force or (state.get("last_score_day") != today and datetime.fromtimestamp(now, TR).hour >= DAY_HOUR):
+        sc = score_coupons(events, now)
+        if sc:
+            state["last_score_day"] = today
+            made += sc
     state["iyms_top"] = iyms_top(events, table, now)
     coupons += made
 

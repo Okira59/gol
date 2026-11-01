@@ -6,6 +6,7 @@ data/iddaa.json içinde kendi oran geçmişini biriktirir.
 - Sonuçlar son 3 günün iddaa canlı sonuç sayfasından alınır.
 """
 import json
+import re
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -62,6 +63,19 @@ def market_odds(markets):
     return out
 
 
+def score_odds(markets):
+    """iddaa '1. Yarı/Maç Sonucu Skorları' (st 718): {"abcd": oran} = İY a-b, MS c-d."""
+    out = {}
+    for m in markets or []:
+        if m.get("t") != 2 or m.get("st") != 718:
+            continue
+        for o in m.get("o", []):
+            g = re.fullmatch(r"(\d)-(\d) (\d)-(\d)", o.get("n") or "")
+            if g and o.get("odd"):
+                out["".join(g.groups())] = round(float(o["odd"]), 2)
+    return out
+
+
 def snapshot(db):
     js = get_json(f"{SB}/events", {"st": 1, "type": 0, "version": 0})
     if not js or not js.get("isSuccess"):
@@ -89,6 +103,9 @@ def snapshot(db):
                 "h": e.get("hn", ""), "a": e.get("an", ""), "odds": {},
             })
             rec["ts"] = e["d"]
+            hs = score_odds(markets)
+            if hs:
+                rec["hs"] = hs
             for k, v in odds.items():
                 if k in rec["odds"]:
                     rec["odds"][k][0] = v
@@ -128,6 +145,9 @@ def main():
             db = json.load(f)
     snapshot(db)
     results(db)
+    for v in db.values():
+        if "fh" in v:
+            v.pop("hs", None)
     cutoff = time.time() - 120 * 86400
     db = {k: v for k, v in db.items() if v["ts"] >= cutoff and ("fh" in v or v["ts"] > time.time() - 5 * 86400)}
     tmp = FILE + ".tmp"
