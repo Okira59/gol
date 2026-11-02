@@ -171,8 +171,8 @@ def parse_odds(js, ja, jb):
                     k = "hf" + w.replace("X", "0").replace("/", "")
             elif bt == "CORRECT_SCORE" and it.get("score"):
                 k = f"{pre}cs{it['score'].replace(':', '-')}"
-            elif bt == "BOTH_TEAMS_TO_SCORE" and sc == "FULL_TIME":
-                k = "kgv" if it.get("bothTeamsToScore") else "kgy"
+            elif bt == "BOTH_TEAMS_TO_SCORE":
+                k = pre + ("kgv" if it.get("bothTeamsToScore") else "kgy")
             if k and k not in out:
                 out[k] = val
     return out

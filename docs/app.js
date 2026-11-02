@@ -311,9 +311,9 @@ function renderSkor() {
 // ---------- kuponlar ----------
 let KUPON = null;
 const fmtT = (ts) => new Date(ts * 1000).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-const KIND = { iyms: "İY/MS", skor: "İY + 2. yarı skoru", iyust: "İY 1.5 / 2.5 Üst", ust: "3.5 / 4.5 / 5.5 Üst", ms: "Maç sonucu (MS)", yuksek: "Yüksek oran",
+const KIND = { iyms: "İY/MS", skor: "İY + 2. yarı skoru", iyust: "İY 1.5 / 2.5 Üst", ust: "3.5 / 4.5 / 5.5 Üst", ms: "Maç sonucu (MS)", iykg: "İY KG Var", yuksek: "Yüksek oran",
   kisa: "4 saatlik (eski)", gunluk: "Günlük 5-6 maçlık (eski)", iyms_y: "İY/MS yüksek oran (eski)" };
-const ORDER = ["iyms", "skor", "iyust", "ust", "ms", "yuksek"];
+const ORDER = ["iyms", "skor", "iyust", "ust", "ms", "iykg", "yuksek"];
 const pTxt = (p) => (p >= 0.001 ? `%${(p * 100).toFixed(p >= 0.01 ? 1 : 2)}` : `${Math.round(1 / p).toLocaleString("tr-TR")}'de 1`);
 const mark = (r) => (r === true ? `<span class="pos">✓</span>` : r === false ? `<span class="neg">✗</span>` : "");
 function skorCard(c) {
@@ -380,7 +380,7 @@ function renderKupon() {
   const now = Date.now() / 1000;
   const active = all.filter((c) => c.status === "bekliyor" && Math.max(...c.legs.map((l) => l.ts)) + 2.5 * 3600 > now);
   const done = all.filter((c) => c.status === "kazandı");
-  let h = `<p class="note">Her gün 09:00'dan sonra o günün <b>iddaa maçlarından</b> 13 kupon hazırlanır: İY/MS, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS) ve yüksek oranlıdan 2'şer adet (2-5 maçlık),
+  let h = `<p class="note">Her gün 09:00'dan sonra o günün <b>iddaa maçlarından</b> 15 kupon hazırlanır: İY/MS, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS), İY Karşılıklı Gol Var ve yüksek oranlıdan 2'şer adet (2-5 maçlık),
     İY + 2. yarı skorundan 4'lü, 5'li ve 6'lı birer kupon (sadece iddaa'da skor bahsi açık maçlar). Kuponlarda toplam oranı <b>5.50'nin altında kupon yoktur</b> (yüksek oranlıda en az 10). Bu şartı sağlayan kombinasyonlar arasından tutma olasılığı en yüksek olan seçilir.
     Oranlar iddaa'dan; iddaa'da olmayan market (çoğunlukla İY/MS) için aynı maçın Bet365 / William Hill oranı kullanılır (tabloda belirtilir).
     Olasılık: oranın ima ettiği olasılık, son 3 ayda aynı oran seviyesindeki maçların gerçek sonuçlarına göre düzeltilir. Son güncelleme: ${fmtT(KUPON.updated)}</p>`;
@@ -403,6 +403,12 @@ function renderKupon() {
     }
     h += `</table></div>`;
   }
+  const kg = KUPON.iykg_top || [];
+  if (kg.length) {
+    h += `<h2>İY Karşılıklı Gol Var: önümüzdeki 36 saatin en olası maçları <span class="note">(tutma olasılığı en yüksekten düşüğe; iddaa oranı yoksa Bet365 / William Hill)</span></h2><div class="scroll"><table><tr><th>#</th><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Oran</th><th>Olasılık</th><th>Oranın ima ettiği</th></tr>`;
+    kg.forEach((l, i) => (h += `<tr><td>${i + 1}</td><td>${fmtT(l.ts)}</td><td class="l">${esc(l.lg)}</td><td class="l">${esc(l.h)} - ${esc(l.a)}${l.bk && l.bk !== "iddaa" ? ` <span class="note">(${esc(l.bk)})</span>` : ""}</td><td>${l.odd.toFixed(2)}</td><td>%${f1(l.p * 100)}</td><td>%${f1(l.p0 * 100)}</td></tr>`));
+    h += `</table></div><p class="note">İY KG Var: ilk yarıda iki takımın da gol atması. Bu bahis nadir tutar (maçların ~%21'i); olasılıklar tahmindir.</p>`;
+  }
   const wonAt = (c) => Math.max(...c.legs.map((l) => l.ts || 0)) || c.created || 0;
   const past = done.sort((a, b) => wonAt(b) - wonAt(a)).slice(0, 40);
   if (past.length) { h += `<h2>Tutan kuponlar <span class="note">(en son tutandan eskiye)</span></h2>`; past.forEach((c) => (h += couponCard(c, false))); }
@@ -420,7 +426,7 @@ function renderAra() {
       <div class="filters"><label>Oran <input id="a-odd" type="number" step="0.01" min="1" placeholder="örn. 1.85" style="width:90px"></label>
       <label>Hassasiyet <select id="a-tol"><option value="0">Tam bu oran</option><option value="0.05">± 0.05</option><option value="0.10">± 0.10</option></select></label>
       <label>Zaman <select id="a-day"><option value="1">Bugün</option><option value="0">Tüm bülten (36 saat)</option></select></label>
-      <label>Market <select id="a-mk"><option value="">Hepsi</option><option value="^MS ">Maç sonucu (MS)</option><option value="^İY [12X]$">İlk yarı sonucu</option><option value="^[0-9.]+ (Üst|Alt)">Alt / Üst</option><option value="^İY [0-9.]+ ">İY Alt / Üst</option><option value="^İY/MS">İY/MS</option><option value="^KG">KG Var / Yok</option></select></label>
+      <label>Market <select id="a-mk"><option value="">Hepsi</option><option value="^MS ">Maç sonucu (MS)</option><option value="^İY [12X]$">İlk yarı sonucu</option><option value="^[0-9.]+ (Üst|Alt)">Alt / Üst</option><option value="^İY [0-9.]+ ">İY Alt / Üst</option><option value="^İY/MS">İY/MS</option><option value="^KG">KG Var / Yok</option><option value="^İY KG">İY KG Var / Yok</option></select></label>
       <button id="a-go">Tara</button></div>
       <div class="filters"><label>Tutma olasılığı (%) <input id="a-prob" type="text" inputmode="decimal" placeholder="örn. %40" style="width:90px"></label>
       <label>Olasılık hassasiyeti <select id="a-ptol"><option value="2">± %2</option><option value="5">± %5</option><option value="10">± %10</option></select></label>

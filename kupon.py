@@ -3,10 +3,10 @@
 Kuponlar sadece iddaa bültenindeki maçlardan, iddaa oranlarıyla kurulur.
 Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0), son 3 ayın maçlarında (Bet365 /
 William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
-- Günde bir kez (09:00 sonrası) o günün maçlarından 12 kupon, her türden 2 adet: İY/MS, İY + 2. yarı skoru,
-  İY 1.5/2.5 Üst, 3.5/4.5/5.5 Üst, MS (1-X-2) ve yüksek oranlı (seçim başına 2.40-6.00). Her türde tutma
+- Günde bir kez (09:00 sonrası) o günün maçlarından her türden 2 kupon: İY/MS, İY 1.5/2.5 Üst, 3.5/4.5/5.5 Üst,
+  MS (1-X-2), İY Karşılıklı Gol Var ve yüksek oranlı (seçim başına 2.40-6.00); ayrıca İY + 2. yarı skoru. Her türde tutma
   olasılığı en yüksek seçimler kullanılır. iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 /
-  William Hill oranıyla tamamlanır. Ayrıca 9 İY/MS seçeneğinin her biri için en olası maçlar listelenir.
+  William Hill oranıyla tamamlanır. Ayrıca 9 İY/MS seçeneğinin her biri ve İY KG Var için en olası maçlar listelenir.
 Çıktı: docs/data/kuponlar.json, docs/data/bulten.json (oran arama)
 """
 import json
@@ -40,9 +40,12 @@ DAILY_SET = [
     ("iyust", ["io1.5", "io2.5"], (1.01, 15.0), MIN_ODD),
     ("ust", ["o3.5", "o4.5", "o5.5"], (1.01, 15.0), MIN_ODD),
     ("ms", ["1", "X", "2"], (1.20, 3.00), MIN_ODD),
+    ("iykg", ["ikgv"], (1.01, 15.0), MIN_ODD),
     ("yuksek", None, (2.40, 6.00), HIGH_TOTAL),
 ]
 KINDS = {k for k, *_ in DAILY_SET} | {"skor"}
+BY_P = {"iykg"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
+IYKG = ("ikgv", "ikgy")
 KEEP_DAYS = 30
 SHRINK = 40
 
@@ -59,6 +62,8 @@ def label(k):
         return "KG Var"
     if k == "kgy":
         return "KG Yok"
+    if k in IYKG:
+        return "İY KG " + ("Var" if k == "ikgv" else "Yok")
     if k.startswith("hf"):
         a, b = (("X" if c == "0" else c) for c in k[2:])
         return f"İY/MS {a}/{b}"
@@ -71,6 +76,7 @@ def groups():
     yield ("1", "X", "2")
     yield ("i1", "iX", "i2")
     yield ("kgv", "kgy")
+    yield IYKG
     for L in LINES:
         yield ("o" + L, "u" + L)
         yield ("io" + L, "iu" + L)
@@ -112,6 +118,8 @@ def outcome(k, fh, fa, hh, ha):
         return None
     if k in ("i1", "iX", "i2"):
         return res(hh, ha) == {"i1": "1", "iX": "0", "i2": "2"}[k]
+    if k in IYKG:
+        return (hh > 0 and ha > 0) == (k == "ikgv")
     if k.startswith("io") or k.startswith("iu"):
         L = float(k[2:])
         return (hh + ha > L) if k[1] == "o" else (hh + ha < L)
@@ -156,7 +164,7 @@ def candidates(events, table, t0, t1, lo, hi, min_n, keys=None):
         if not (t0 <= e["ts"] < t1):
             continue
         for k, p0 in fair(e["odds"]).items():
-            if keys is not None and k not in keys:
+            if (k not in keys) if keys is not None else (k in IYKG):
                 continue
             odd = e["odds"][k][0] if isinstance(e["odds"][k], list) else e["odds"][k]
             if not (lo <= odd <= hi):
@@ -196,8 +204,9 @@ def best_coupons(picks, kind, now, min_odd, count=2):
             break
         p, odd, legs = best
         used |= {l["id"] for l in legs}
+        order = (lambda l: -l["p"]) if kind in BY_P else (lambda l: l["ts"])
         out.append({"cid": f"{kind}-{now}-{len(out)}", "kind": kind, "created": now,
-                    "legs": sorted(legs, key=lambda l: l["ts"]), "odd": round(odd, 2),
+                    "legs": sorted(legs, key=order), "odd": round(odd, 2),
                     "p": float(f"{p:.3g}"), "status": "bekliyor"})
     return out
 
@@ -350,6 +359,12 @@ def iyms_top(events, table, now, per=3):
     return out
 
 
+def iykg_top(events, table, now, per=10):
+    """İY KG Var: önümüzdeki 36 saatte tutma olasılığı en yüksek maçlar (yukarıdan aşağı)."""
+    c = candidates(events, table, now + MIN_LEAD, now + 36 * 3600, 1.01, 1000, min_n=20, keys=["ikgv"])
+    return sorted(c, key=lambda x: -x["p"])[:per]
+
+
 def settle(coupons, results):
     for cp in coupons:
         sk = cp["kind"] == "skor"
@@ -437,6 +452,7 @@ def main():
             state["last_score_day"] = today
             made += sc
     state["iyms_top"] = iyms_top(events, table, now)
+    state["iykg_top"] = iykg_top(events, table, now)
     coupons += made
 
     cutoff = now - KEEP_DAYS * 86400
