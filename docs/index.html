@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gol & Oran Analizi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Gol &amp; Oran Analizi <a href="https://okira59.github.io/Pyhton/" style="font-size:13px;font-weight:400;color:#94a3b8;margin-left:10px">← Altın panelleri</a></h1>
+  <div id="meta">Yükleniyor...</div>
+</header>
+
+<section class="filters">
+  <label>Kaynak
+    <select id="f-src">
+      <option value="fs">Bet365 / William Hill oranları</option>
+      <option value="iddaa">iddaa.com oranları</option>
+    </select>
+  </label>
+  <label>Dönem
+    <select id="f-days">
+      <option value="7">Son 7 gün</option>
+      <option value="30">Son 30 gün</option>
+      <option value="60">Son 60 gün</option>
+      <option value="90" selected>Son 3 ay</option>
+    </select>
+  </label>
+  <label>Lig
+    <select id="f-lg"><option value="">Tüm ligler</option></select>
+  </label>
+  <label>Oran
+    <select id="f-ot">
+      <option value="0">Kapanış (maç öncesi son)</option>
+      <option value="1">Açılış</option>
+    </select>
+  </label>
+  <span id="f-count" class="count"></span>
+</section>
+
+<nav class="tabs">
+  <button data-tab="ozet" class="active">Özet</button>
+  <button data-tab="ust">Gol Üst (2.5 - 5.5)</button>
+  <button data-tab="iy">İlk Yarı Gol</button>
+  <button data-tab="iyms">İY/MS 1/2 - 2/1</button>
+  <button data-tab="skor">Skorlar</button>
+  <button data-tab="liste">Maç Listesi</button>
+  <button data-tab="kupon">Kuponlar</button>
+  <button data-tab="ara">Oran Ara</button>
+</nav>
+
+<main>
+  <section id="tab-ozet" class="tab active"></section>
+  <section id="tab-ust" class="tab"></section>
+  <section id="tab-iy" class="tab"></section>
+  <section id="tab-iyms" class="tab"></section>
+  <section id="tab-skor" class="tab"></section>
+  <section id="tab-liste" class="tab"></section>
+  <section id="tab-kupon" class="tab"></section>
+  <section id="tab-ara" class="tab"></section>
+</main>
+
+<footer>
+  <b>Nasıl okunur?</b> <i>Gerçekleşen %</i>: o aralıktaki maçların yüzde kaçının o sonuçla bittiği.
+  <i>Oranın beklediği %</i>: oranın kendi içinde ima ettiği olasılık (1 / oran).
+  <span class="pos">Yeşil fark</span>: sonuç orandan daha sık çıkmış, <span class="neg">kırmızı fark</span>: daha az çıkmış.
+  Renkler genel ortalamaya göredir: yeşil = ortalamanın üstü, sarı = ortalama, kırmızı = altı. Az maçlı (&lt; 20) satırlar soluk gösterilir, güvenilir değildir. Geçmiş sonuçlar geleceği garanti etmez.
+</footer>
+<script src="app.js"></script>
+</body>
+</html>

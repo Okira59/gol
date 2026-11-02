@@ -13,6 +13,7 @@ Son 3 ayın maçlarını toplayıp gol/oran istatistikleri çıkarır, yaklaşan
 | `build.py` | `data/*.json` dosyalarından panelin okuduğu sade `matches.json` dosyasını üretir |
 | `kupon.py` | Marjı temizlenmiş oran + geçmiş düzeltmesiyle olasılık hesaplayıp 2-4 maçlık kuponlar (Üst/Alt, İY/MS) üretir ve sonuçlandırır → `kuponlar.json`, `bulten.json` |
 | `skor.py` | Oranlardan Poisson modeliyle İY / MS skor olasılıklarını hesaplar → `skorlar.json` |
+| `docs/` | Panel (index.html, app.js) ve `docs/data/` çıktıları |
 
 ## Kurulum
 ```bash
@@ -24,10 +25,14 @@ pip install -r requirements.txt
 python iddaa_collect.py
 python fs_collect.py --days 3
 python fs_upcoming.py
-python build.py ../docs/gol/data/matches.json
+python build.py docs/data/matches.json
 python kupon.py
 python skor.py
 ```
 
-> Not: `kupon.py` ve `skor.py` çıktılarını `../docs/gol/data/` klasörüne yazar (eski depo düzeni: panel `Okira59/Pyhton/docs/gol/`).
-> `Okira59/toto` projesi `fs_collect.py`, `kupon.py` ve `skor.py` modüllerini kullanır.
+## Otomatik çalışma ve panel
+- `.github/workflows/gol.yml` her 30 dakikada tetiklenir, 2 saatte bir gerçekten çalışır (elle: Actions → "Gol Analiz Verisi" → Run workflow).
+  Toplanan veri `data/`, panel verisi `docs/data/` klasörüne commit'lenir.
+- Panel (GitHub Pages, `main` dalı `/docs`): https://okira59.github.io/gol/
+
+> `Okira59/toto` projesi `fs_collect.py`, `kupon.py`, `skor.py`, `leagues.py` modüllerinin bir kopyasını kullanır.

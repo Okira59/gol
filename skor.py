@@ -4,7 +4,7 @@ Model: marjı arındırılmış oranlardan (MS 1X2 + alt/üst, İY 1X2 + İY alt
 maç geneli beklenen gol sayısı bulunur (Poisson). 2. yarı = maç geneli - ilk yarı; MS skoru = İY + 2. yarı.
 Son 30 günün 1.586 maçında test edildi: skor olasılıkları gerçekleşen sıklıklarla uyumlu (ek düzeltme
 denendi, iyileştirmediği için kullanılmadı).
-Çıktı: docs/gol/data/skorlar.json
+Çıktı: docs/data/skorlar.json
 """
 import json
 import os
@@ -14,7 +14,7 @@ import numpy as np
 
 from kupon import BASE, fair, load
 
-OUT = os.path.join(BASE, "..", "docs", "gol", "data", "skorlar.json")
+OUT = os.path.join(BASE, "docs", "data", "skorlar.json")
 G = 8                      # 0..7 gol
 FT_KEYS = ["1", "X", "2", "o1.5", "o2.5", "o3.5", "kgv"]
 CS_W = 0.0  # Bet365 kesin skor oranı ağırlığı: 4.878 maçlık testte karıştırmak log-loss'u kötüleştirdi, kullanılmıyor

@@ -1,0 +1,68 @@
+name: Gol Analiz Verisi
+
+# Eski Pyhton deposunda futures botuna bağlıydı; artık bağımsız. GitHub cron bazen
+# atlayabildiği için sık tetiklenir, zaman kontrolü asıl çalışma aralığını belirler.
+on:
+  schedule:
+    - cron: "20,50 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gol
+  cancel-in-progress: false
+
+jobs:
+  guncelle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zaman kontrolü (2 saatte bir)
+        id: gate
+        run: |
+          last=$(python3 -c "import json;print(json.load(open('docs/data/matches.json'))['updated'])" 2>/dev/null || echo 0)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ $(( $(date +%s) - last )) -ge 7000 ]; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "Son güncelleme yakın zamanda, atlanıyor."
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run
+        with:
+          python-version: "3.11"
+      - if: steps.gate.outputs.run
+        run: pip install requests numpy
+      - name: iddaa oranları + sonuçları
+        if: steps.gate.outputs.run
+        run: python -u iddaa_collect.py
+      - name: Flashscore (son 3 gün)
+        if: steps.gate.outputs.run
+        run: python -u fs_collect.py --days 3
+      - name: Flashscore yaklaşan maçlar (İY/MS kuponları için)
+        if: steps.gate.outputs.run
+        run: python -u fs_upcoming.py
+      - name: Panel verisi
+        if: steps.gate.outputs.run
+        run: python -u build.py docs/data/matches.json
+      - name: Kuponlar
+        if: steps.gate.outputs.run
+        run: python -u kupon.py
+      - name: Skor olasılıkları
+        if: steps.gate.outputs.run
+        run: python -u skor.py
+      - name: Kaydet
+        if: steps.gate.outputs.run
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data docs/data
+          git diff --cached --quiet && exit 0
+          git commit -m "Gol analiz verisi güncellendi [skip ci]"
+          for i in 1 2 3 4 5; do
+            git pull --rebase -X theirs && git push && exit 0
+            sleep $((i * 5))
+          done
+          exit 1

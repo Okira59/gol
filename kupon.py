@@ -7,7 +7,7 @@ William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıkl�
   İY 1.5/2.5 Üst, 3.5/4.5/5.5 Üst, MS (1-X-2) ve yüksek oranlı (seçim başına 2.40-6.00). Her türde tutma
   olasılığı en yüksek seçimler kullanılır. iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 /
   William Hill oranıyla tamamlanır. Ayrıca 9 İY/MS seçeneğinin her biri için en olası maçlar listelenir.
-Çıktı: docs/gol/data/kuponlar.json, docs/gol/data/bulten.json (oran arama)
+Çıktı: docs/data/kuponlar.json, docs/data/bulten.json (oran arama)
 """
 import json
 import os
@@ -22,7 +22,7 @@ from math import prod
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(BASE, "data")
-OUT = os.path.join(BASE, "..", "docs", "gol", "data", "kuponlar.json")
+OUT = os.path.join(BASE, "docs", "data", "kuponlar.json")
 TR = timezone(timedelta(hours=3))
 
 DAY_HOUR = 9           # TR saati; günün kuponları bu saatten sonra bir kez hazırlanır
