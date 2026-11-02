@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Geçici dosyalar (scriptler önce *.tmp yazıp sonra asıl dosyanın üzerine taşır)
+*.tmp
+data/*.tmp
+data/*.log
+
+# Editör / işletim sistemi
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Not: data/*.json dosyaları (fs_matches, fs_odds, fs_upcoming, iddaa) ileriye dönük
+# biriktirilen kalıcı veridir (iddaa geçmiş oran vermez); bu yüzden git'te tutulur.
