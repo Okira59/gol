@@ -403,46 +403,78 @@ function renderKupon() {
     }
     h += `</table></div>`;
   }
-  const past = done.sort((a, b) => b.odd - a.odd).slice(0, 40);
-  if (past.length) { h += `<h2>Tutan kuponlar <span class="note">(en yüksek orandan düşüğe)</span></h2>`; past.forEach((c) => (h += couponCard(c, false))); }
+  const wonAt = (c) => Math.max(...c.legs.map((l) => l.ts || 0)) || c.created || 0;
+  const past = done.sort((a, b) => wonAt(b) - wonAt(a)).slice(0, 40);
+  if (past.length) { h += `<h2>Tutan kuponlar <span class="note">(en son tutandan eskiye)</span></h2>`; past.forEach((c) => (h += couponCard(c, false))); }
   h += `<p class="note">Uyarı: Geçmiş testte (son 45 gün) model olasılıkları gerçekleşenle uyumluydu ama kuponların uzun vadede kâr ettiği görülmedi. Bahis şirketinin marjı nedeniyle kâr garantisi yoktur.</p>`;
   el.innerHTML = h;
 }
 
 // ---------- oran arama ----------
-let BULTEN = null;
+let BULTEN = null, araMode = null;
 function renderAra() {
   const el = $("#tab-ara");
   if (!el.innerHTML) {
-    el.innerHTML = `<p class="note">Bir oran yazın, iddaa bültenindeki (önümüzdeki 36 saat) sadece o orana sahip maçlar ve seçenekler listelensin.</p>
+    el.innerHTML = `<p class="note">Bir oran yazın, iddaa bültenindeki (önümüzdeki 36 saat) sadece o orana sahip maçlar ve seçenekler listelensin.
+      Ya da bir tutma olasılığı yazın, modelin o olasılığa yakın gördüğü seçimler listelensin (oran dikkate alınmaz).</p>
       <div class="filters"><label>Oran <input id="a-odd" type="number" step="0.01" min="1" placeholder="örn. 1.85" style="width:90px"></label>
       <label>Hassasiyet <select id="a-tol"><option value="0">Tam bu oran</option><option value="0.05">± 0.05</option><option value="0.10">± 0.10</option></select></label>
       <label>Zaman <select id="a-day"><option value="1">Bugün</option><option value="0">Tüm bülten (36 saat)</option></select></label>
       <label>Market <select id="a-mk"><option value="">Hepsi</option><option value="^MS ">Maç sonucu (MS)</option><option value="^İY [12X]$">İlk yarı sonucu</option><option value="^[0-9.]+ (Üst|Alt)">Alt / Üst</option><option value="^İY [0-9.]+ ">İY Alt / Üst</option><option value="^İY/MS">İY/MS</option><option value="^KG">KG Var / Yok</option></select></label>
-      <button id="a-go">Tara</button></div><div id="a-res"></div>`;
+      <button id="a-go">Tara</button></div>
+      <div class="filters"><label>Tutma olasılığı (%) <input id="a-prob" type="text" inputmode="decimal" placeholder="örn. %40" style="width:90px"></label>
+      <label>Olasılık hassasiyeti <select id="a-ptol"><option value="2">± %2</option><option value="5">± %5</option><option value="10">± %10</option></select></label>
+      <button id="a-pgo">Olasılık Ara</button></div>
+      <p class="note">Olasılıklar model tahminidir (oran + geçmiş sonuç düzeltmesi), garanti değildir.</p><div id="a-res"></div>`;
   }
+}
+// Zaman + Market filtresine uyan tüm seçimleri tarar; keep(o, p) true dönenleri toplar
+function araScan(keep) {
+  const mk = $("#a-mk").value ? new RegExp($("#a-mk").value) : null;
+  const end = new Date(); end.setHours(23, 59, 59, 999);
+  const lim = $("#a-day").value === "1" ? end.getTime() / 1000 : Infinity, now = Date.now() / 1000;
+  const rows = [];
+  for (const m of BULTEN.matches) {
+    if (m.ts < now || m.ts > lim) continue;
+    for (const [lab, o, p, ext] of m.o) if (keep(o, p) && (!mk || mk.test(lab))) rows.push({ m, lab, o, p, ext });
+  }
+  return rows;
+}
+function araTable(rows, imp) {
+  let h = `<p class="note"><b>${rows.length}</b> seçim, ${new Set(rows.map((r) => r.m.id)).size} maç bulundu. Bülten güncellemesi: ${fmtT(BULTEN.updated)}</p>`;
+  if (rows.length) {
+    h += `<div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th>${imp ? `<th class="l">Market</th><th class="l">Seçim</th>` : `<th class="l">Seçenek</th>`}<th>Oran</th><th>Tutma olasılığı</th>${imp ? "<th>Oranın ima ettiği</th><th>Kaynak</th>" : ""}</tr>`;
+    for (const r of rows) {
+      const sp = r.lab.lastIndexOf(" ");
+      const sel = imp ? `<td class="l">${esc(r.lab.slice(0, sp))}</td><td class="l"><b>${esc(r.lab.slice(sp + 1))}</b></td>`
+        : `<td class="l"><b>${esc(r.lab)}</b>${r.ext ? ` <span class="note">(Bet365/WH)</span>` : ""}</td>`;
+      h += `<tr><td>${fmtT(r.m.ts)}</td><td class="l">${esc(r.m.lg)}</td><td class="l">${esc(r.m.h)} - ${esc(r.m.a)}</td>${sel}<td>${r.o.toFixed(2)}</td><td>${r.p ? `%${f1(r.p * 100)}` : "-"}</td>${imp ? `<td>%${f1(100 / r.o)}</td><td>${r.ext ? "Bet365/WH" : "iddaa"}</td>` : ""}</tr>`;
+    }
+    h += `</table></div>`;
+  }
+  return h;
 }
 function runAra() {
   const res = $("#a-res");
   if (!BULTEN) { res.innerHTML = `<p class="note">Bülten yükleniyor...</p>`; return; }
   const v = parseFloat(String($("#a-odd").value).replace(",", "."));
   if (!(v > 1)) { res.innerHTML = `<p class="note">Geçerli bir oran yazın (örn. 1.85).</p>`; return; }
-  const tol = +$("#a-tol").value + 0.001, mk = $("#a-mk").value ? new RegExp($("#a-mk").value) : null;
-  const end = new Date(); end.setHours(23, 59, 59, 999);
-  const lim = $("#a-day").value === "1" ? end.getTime() / 1000 : Infinity, now = Date.now() / 1000;
-  const rows = [];
-  for (const m of BULTEN.matches) {
-    if (m.ts < now || m.ts > lim) continue;
-    for (const [lab, o, p, ext] of m.o) if (Math.abs(o - v) <= tol && (!mk || mk.test(lab))) rows.push({ m, lab, o, p, ext });
-  }
+  araMode = "odd";
+  const tol = +$("#a-tol").value + 0.001;
+  const rows = araScan((o) => Math.abs(o - v) <= tol);
   rows.sort((a, b) => a.m.ts - b.m.ts || (b.p || 0) - (a.p || 0));
-  let h = `<p class="note"><b>${rows.length}</b> seçim, ${new Set(rows.map((r) => r.m.id)).size} maç bulundu. Bülten güncellemesi: ${fmtT(BULTEN.updated)}</p>`;
-  if (rows.length) {
-    h += `<div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th class="l">Seçenek</th><th>Oran</th><th>Tutma olasılığı</th></tr>`;
-    for (const r of rows) h += `<tr><td>${fmtT(r.m.ts)}</td><td class="l">${esc(r.m.lg)}</td><td class="l">${esc(r.m.h)} - ${esc(r.m.a)}</td><td class="l"><b>${esc(r.lab)}</b>${r.ext ? ` <span class="note">(Bet365/WH)</span>` : ""}</td><td>${r.o.toFixed(2)}</td><td>${r.p ? `%${f1(r.p * 100)}` : "-"}</td></tr>`;
-    h += `</table></div>`;
-  }
-  res.innerHTML = h;
+  res.innerHTML = araTable(rows, false);
+}
+function runAraP() {
+  const res = $("#a-res");
+  if (!BULTEN) { res.innerHTML = `<p class="note">Bülten yükleniyor...</p>`; return; }
+  const v = parseFloat(String($("#a-prob").value).replace("%", "").replace(",", ".").trim());
+  if (!(v > 0 && v < 100)) { res.innerHTML = `<p class="note">Geçerli bir olasılık yazın (örn. %40, 40 veya 40,5).</p>`; return; }
+  araMode = "prob";
+  const t = v / 100, tol = +$("#a-ptol").value / 100 + 1e-9;
+  const rows = araScan((o, p) => p > 0 && Math.abs(p - t) <= tol);
+  rows.sort((a, b) => Math.abs(a.p - t) - Math.abs(b.p - t) || b.p - a.p);
+  res.innerHTML = `<p class="note">Hedef: <b>%${f1(v)}</b> ± %${$("#a-ptol").value} (yakınlığa göre sıralı)</p>` + araTable(rows, true);
 }
 
 // ---------- filtre & olaylar ----------
@@ -481,10 +513,13 @@ document.addEventListener("click", (e) => {
   else if (b.dataset.iyms) { state.iymsT = b.dataset.iyms; renderIyms(); }
   else if (b.id === "more") { state.listN += 300; renderListe(); }
   else if (b.id === "a-go") runAra();
+  else if (b.id === "a-pgo") runAraP();
 });
 document.addEventListener("change", (e) => {
   const id = e.target.id;
-  if (id.startsWith("a-")) { if ($("#a-odd").value) runAra(); }
+  if (id === "a-prob" || id === "a-ptol") { if ($("#a-prob").value) runAraP(); }
+  else if (id === "a-odd" || id === "a-tol") { if ($("#a-odd").value) runAra(); }
+  else if (id.startsWith("a-")) { if (araMode === "prob" && $("#a-prob").value) runAraP(); else if ($("#a-odd").value) runAra(); }
   else if (id.startsWith("f-")) { state.listN = 200; applyFilters(); }
   else if (id === "g-ust") { state.ustGroup = e.target.value; renderUst(); }
   else if (id === "g-iy") { state.iyGroup = e.target.value; renderIy(); }
@@ -512,6 +547,6 @@ fetch("data/skorlar.json?" + Date.now())
 fetch("data/kuponlar.json?" + Date.now()).then((r) => r.json()).then((d) => { KUPON = d; renderKupon(); })
   .catch(() => { KUPON = { coupons: [], updated: 0 }; renderKupon(); });
 renderAra();
-document.addEventListener("keydown", (e) => { if (e.target.id === "a-odd" && e.key === "Enter") runAra(); });
+document.addEventListener("keydown", (e) => { if (e.target.id === "a-odd" && e.key === "Enter") runAra(); else if (e.target.id === "a-prob" && e.key === "Enter") runAraP(); });
 fetch("data/bulten.json?" + Date.now()).then((r) => r.json()).then((d) => { BULTEN = d; })
   .catch(() => { BULTEN = { matches: [], updated: 0 }; });
