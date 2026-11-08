@@ -3,8 +3,9 @@
 Kuponlar sadece iddaa bültenindeki maçlardan, iddaa oranlarıyla kurulur.
 Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0), son 3 ayın maçlarında (Bet365 /
 William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
-- Günde bir kez (09:00 sonrası) o günün maçlarından her türden 2 kupon: İY/MS, İY 1.5/2.5 Üst, 3.5/4.5/5.5 Üst,
-  MS (1-X-2), İY Karşılıklı Gol Var ve yüksek oranlı (seçim başına 2.40-6.00); ayrıca İY + 2. yarı skoru. Her türde tutma
+- Her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından her türden en fazla 2 kupon: İY/MS, İY 1.5/2.5 Üst,
+  3.5/4.5/5.5 Üst, MS (1-X-2), İY Karşılıklı Gol Var (en az %43), İY skoru, yüksek oranlı (seçim başına 2.40-6.00)
+  ve İY + 2. yarı skoru. Tutma olasılığı %36'nın altındaki hiçbir maç kupona alınmaz. Her türde tutma
   olasılığı en yüksek seçimler kullanılır. iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 /
   William Hill oranıyla tamamlanır. Ayrıca 9 İY/MS seçeneğinin her biri ve İY KG Var için en olası maçlar listelenir.
 Çıktı: docs/data/kuponlar.json, docs/data/bulten.json (oran arama)
@@ -25,9 +26,11 @@ DATA = os.path.join(BASE, "data")
 OUT = os.path.join(BASE, "docs", "data", "kuponlar.json")
 TR = timezone(timedelta(hours=3))
 
-DAY_HOUR = 9           # TR saati; günün kuponları bu saatten sonra bir kez hazırlanır
+SLOT_HOURS = 4         # her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından kupon hazırlanır
 MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
 HIGH_MIN_P = 0.20
+MIN_LEG_P = 0.36       # tutma olasılığı bunun altındaki hiçbir maç kupona alınmaz
+IYKG_MIN_P = 0.43      # İY KG Var: bunun altındaki olasılıklar gösterilmez
 # Günde 12 kupon: her türden 2 adet, tutma olasılığı en yüksek seçimlerden.
 # Kupon 2-5 maçlık; toplam oran en az MIN_ODD (yüksek oranda HIGH_TOTAL).
 # (tür, seçilebilecek marketler, tek seçim oran aralığı, en düşük toplam oran)
@@ -41,10 +44,11 @@ DAILY_SET = [
     ("ust", ["o3.5", "o4.5", "o5.5"], (1.01, 15.0), MIN_ODD),
     ("ms", ["1", "X", "2"], (1.20, 3.00), MIN_ODD),
     ("iykg", ["ikgv"], (1.01, 15.0), MIN_ODD),
+    ("iyskor", None, (1.01, 50.0), MIN_ODD),
     ("yuksek", None, (2.40, 6.00), HIGH_TOTAL),
 ]
 KINDS = {k for k, *_ in DAILY_SET} | {"skor"}
-BY_P = {"iykg"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
+BY_P = {"iykg", "iyskor"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
 IYKG = ("ikgv", "ikgy")
 KEEP_DAYS = 30
 SHRINK = 40
@@ -64,6 +68,8 @@ def label(k):
         return "KG Yok"
     if k in IYKG:
         return "İY KG " + ("Var" if k == "ikgv" else "Yok")
+    if k.startswith("ics"):
+        return "İY skoru " + k[3:]
     if k.startswith("hf"):
         a, b = (("X" if c == "0" else c) for c in k[2:])
         return f"İY/MS {a}/{b}"
@@ -120,6 +126,8 @@ def outcome(k, fh, fa, hh, ha):
         return res(hh, ha) == {"i1": "1", "iX": "0", "i2": "2"}[k]
     if k in IYKG:
         return (hh > 0 and ha > 0) == (k == "ikgv")
+    if k.startswith("ics"):
+        return f"{hh}-{ha}" == k[3:]
     if k.startswith("io") or k.startswith("iu"):
         L = float(k[2:])
         return (hh + ha > L) if k[1] == "o" else (hh + ha < L)
@@ -186,9 +194,9 @@ def best_per_match(cands, score):
     return sorted(best.values(), key=score, reverse=True)
 
 
-def best_coupons(picks, kind, now, min_odd, count=2):
+def best_coupons(picks, kind, now, min_odd, count=2, used=()):
     """Toplam oranı >= min_odd olan, tutma olasılığı en yüksek 2-5 maçlık kuponlar (maçlar çakışmaz)."""
-    out, used = [], set()
+    out, used = [], set(used)
     for _ in range(count):
         pool = [x for x in picks if x["id"] not in used][:POOL]
         best = None
@@ -263,15 +271,49 @@ def day_end(now):
     return datetime.fromtimestamp(now, TR).replace(hour=23, minute=59, second=59).timestamp()
 
 
-def daily_set(events, table, now, t1=None):
-    """Günün kuponları: DAILY_SET'teki her türden 2 kupon (aynı türde bir maç bir kez kullanılır)."""
+def ht_score_legs(events, now, t1):
+    """Her maç için iddaa '1. Yarı Skoru' (yoksa Bet365 / William Hill İY kesin skor) seçenekleri arasından
+    Poisson modeline göre en olası İY skoru."""
+    import skor as S
+    legs = []
+    for e in events:
+        if not (now + MIN_LEAD <= e["ts"] < t1):
+            continue
+        opts = {k: (v[0] if isinstance(v, list) else v) for k, v in e["odds"].items() if k.startswith("ics")}
+        own = {k: v for k, v in opts.items() if k not in e.get("ext", ())}
+        opts = own or opts  # iddaa skor bahsi açıksa sadece iddaa seçenekleri
+        if not opts:
+            continue
+        r = S.predict(e["odds"])
+        if not r:
+            continue
+        ht, best = r[0]["ht"], None
+        for k, odd in opts.items():
+            a, b = (int(x) for x in k[3:].split("-"))
+            if odd and max(a, b) < ht.shape[0] and (best is None or ht[a, b] > best[0]):
+                best = (float(ht[a, b]), k, odd)
+        if best:
+            q, k, odd = best
+            legs.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": k,
+                         "pick": label(k), "odd": odd, "p": round(q, 4), "p0": round(1 / odd, 4),
+                         "bk": "Bet365/WH" if k in e.get("ext", ()) else "iddaa"})
+    return legs
+
+
+def daily_set(events, table, now, t1=None, used=None):
+    """Bir dilimin kuponları: DAILY_SET'teki her türden en fazla 2 kupon. Bir maç aynı türün
+    bekleyen kuponlarında bir kez kullanılır; tutma olasılığı MIN_LEG_P altındaki maçlar alınmaz."""
     t1 = t1 or day_end(now)
+    used = used or {}
     out = []
     for kind, keys, (lo, hi), min_odd in DAILY_SET:
-        c = candidates(events, table, now + MIN_LEAD, t1, lo, hi, min_n=40, keys=keys)
-        if kind == "yuksek":
-            c = [x for x in c if x["p"] >= HIGH_MIN_P]
-        out += best_coupons(best_per_match(c, lambda x: x["p"]), kind, now, min_odd)
+        if kind == "iyskor":
+            c = ht_score_legs(events, now, t1)
+        else:
+            c = candidates(events, table, now + MIN_LEAD, t1, lo, hi, min_n=40, keys=keys)
+        floor = max(MIN_LEG_P, HIGH_MIN_P if kind == "yuksek" else 0, IYKG_MIN_P if kind == "iykg" else 0)
+        c = [x for x in c if x["p"] >= floor]
+        out += best_coupons(best_per_match(c, lambda x: x["p"]), kind, now, min_odd, used=used.get(kind, ()))
     return out
 
 
@@ -299,6 +341,8 @@ def score_legs(events, now, t1):
         if not best:
             continue
         q, a, b, x, y, c, d, odd = best
+        if q < MIN_LEG_P:
+            continue
         legs.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": "sk",
                      "ht": f"{a}-{b}", "sh": f"{x}-{y}", "ft": f"{c}-{d}", "p_ht": round(float(ht[a, b]), 4),
                      "p_sh": round(float(sh[x, y]), 4), "p": round(q, 5), "odd": odd})
@@ -341,6 +385,8 @@ def bulletin(events, table, now):
                 if not odd:
                     continue
                 p = estimate(table, k, fp[k])[0] if k in fp else None
+                if k == "ikgv" and (p or 0) < IYKG_MIN_P:
+                    continue
                 o.append([label(k), odd, round(p, 3) if p else None, 1 if k in e.get("ext", ()) else 0])
         out.append({"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "o": o})
     return {"updated": now, "matches": out}
@@ -362,7 +408,7 @@ def iyms_top(events, table, now, per=3):
 def iykg_top(events, table, now, per=10):
     """İY KG Var: önümüzdeki 36 saatte tutma olasılığı en yüksek maçlar (yukarıdan aşağı)."""
     c = candidates(events, table, now + MIN_LEAD, now + 36 * 3600, 1.01, 1000, min_n=20, keys=["ikgv"])
-    return sorted(c, key=lambda x: -x["p"])[:per]
+    return sorted((x for x in c if x["p"] >= IYKG_MIN_P), key=lambda x: -x["p"])[:per]
 
 
 def settle(coupons, results):
@@ -437,20 +483,21 @@ def main():
     # sadece iddaa maçları; iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 / William Hill oranından
     events = with_ext([e for e in iddaa.values() if "fh" not in e and e.get("odds")],
                       [e for e in load("fs_upcoming.json").values() if e.get("odds")])
-    # eski türlerin bekleyen kuponları kaldırılır (artık günde 12 kupon)
+    # eski türlerin bekleyen kuponları kaldırılır
     coupons = [c for c in coupons if c["kind"] in KINDS or c["status"] != "bekliyor"]
     made = []
-    today = datetime.fromtimestamp(now, TR).date().isoformat()
-    if force or (state.get("last_set_day") != today and datetime.fromtimestamp(now, TR).hour >= DAY_HOUR):
-        made = daily_set(events, table, now)
-        if made:
-            state["last_set_day"] = today
-    # skor kuponları: iddaa skor bahsi açtığında (günün ilk uygun turunda) bir kez
-    if force or (state.get("last_score_day") != today and datetime.fromtimestamp(now, TR).hour >= DAY_HOUR):
-        sc = score_coupons(events, now)
-        if sc:
-            state["last_score_day"] = today
-            made += sc
+    t = datetime.fromtimestamp(now, TR)
+    slot = f"{t.date().isoformat()}-{t.hour // SLOT_HOURS}"
+    if force or state.get("last_slot") != slot:
+        used = {}
+        for c in coupons:
+            if c["status"] == "bekliyor":
+                used.setdefault(c["kind"], set()).update(l["id"] for l in c["legs"])
+        made = daily_set(events, table, now, used=used)
+        sc = [c for c in score_coupons(events, now)
+              if not used.get("skor", set()) & {l["id"] for l in c["legs"]}]
+        made += sc
+        state["last_slot"] = slot
     state["iyms_top"] = iyms_top(events, table, now)
     state["iykg_top"] = iykg_top(events, table, now)
     coupons += made

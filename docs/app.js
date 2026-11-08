@@ -311,9 +311,9 @@ function renderSkor() {
 // ---------- kuponlar ----------
 let KUPON = null;
 const fmtT = (ts) => new Date(ts * 1000).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-const KIND = { iyms: "İY/MS", skor: "İY + 2. yarı skoru", iyust: "İY 1.5 / 2.5 Üst", ust: "3.5 / 4.5 / 5.5 Üst", ms: "Maç sonucu (MS)", iykg: "İY KG Var", yuksek: "Yüksek oran",
+const KIND = { iyms: "İY/MS", skor: "İY + 2. yarı skoru", iyust: "İY 1.5 / 2.5 Üst", ust: "3.5 / 4.5 / 5.5 Üst", ms: "Maç sonucu (MS)", iykg: "İY KG Var", iyskor: "İY skoru", yuksek: "Yüksek oran",
   kisa: "4 saatlik (eski)", gunluk: "Günlük 5-6 maçlık (eski)", iyms_y: "İY/MS yüksek oran (eski)" };
-const ORDER = ["iyms", "skor", "iyust", "ust", "ms", "iykg", "yuksek"];
+const ORDER = ["iyms", "skor", "iyskor", "iyust", "ust", "ms", "iykg", "yuksek"];
 const pTxt = (p) => (p >= 0.001 ? `%${(p * 100).toFixed(p >= 0.01 ? 1 : 2)}` : `${Math.round(1 / p).toLocaleString("tr-TR")}'de 1`);
 const mark = (r) => (r === true ? `<span class="pos">✓</span>` : r === false ? `<span class="neg">✗</span>` : "");
 function skorCard(c) {
@@ -380,17 +380,18 @@ function renderKupon() {
   const now = Date.now() / 1000;
   const active = all.filter((c) => c.status === "bekliyor" && Math.max(...c.legs.map((l) => l.ts)) + 2.5 * 3600 > now);
   const done = all.filter((c) => c.status === "kazandı");
-  let h = `<p class="note">Her gün 09:00'dan sonra o günün <b>iddaa maçlarından</b> 15 kupon hazırlanır: İY/MS, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS), İY Karşılıklı Gol Var ve yüksek oranlıdan 2'şer adet (2-5 maçlık),
-    İY + 2. yarı skorundan 4'lü, 5'li ve 6'lı birer kupon (sadece iddaa'da skor bahsi açık maçlar). Kuponlarda toplam oranı <b>5.50'nin altında kupon yoktur</b> (yüksek oranlıda en az 10). Bu şartı sağlayan kombinasyonlar arasından tutma olasılığı en yüksek olan seçilir.
+  let h = `<p class="note">Sistem <b>her 4 saatte bir</b> (00, 04, 08, 12, 16, 20 dilimleri) güncel bülteni tarar ve <b>günün kalan iddaa maçlarından</b> kupon hazırlar: İY/MS, İY skoru, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS), İY Karşılıklı Gol Var ve yüksek oranlıdan en fazla 2'şer adet (2-5 maçlık),
+    İY + 2. yarı skorundan 4'lü, 5'li ve 6'lı birer kupon (sadece iddaa'da skor bahsi açık maçlar). <b>Tutma olasılığı %36'nın altındaki hiçbir maç kupona alınmaz</b> (İY KG Var'da en az %43); bu yüzden bazı dilimlerde bazı türlerden kupon çıkmayabilir. Kuponlarda toplam oranı <b>5.50'nin altında kupon yoktur</b> (yüksek oranlıda en az 10). Bu şartı sağlayan kombinasyonlar arasından tutma olasılığı en yüksek olan seçilir.
     Oranlar iddaa'dan; iddaa'da olmayan market (çoğunlukla İY/MS) için aynı maçın Bet365 / William Hill oranı kullanılır (tabloda belirtilir).
     Olasılık: oranın ima ettiği olasılık, son 3 ayda aynı oran seviyesindeki maçların gerçek sonuçlarına göre düzeltilir. Son güncelleme: ${fmtT(KUPON.updated)}</p>`;
   const sum = (kind) => { const w = done.filter((c) => c.kind === kind);
     return `<div class="card"><div class="t">${KIND[kind]}</div><div class="v">${w.length}</div><div class="s">${w.length ? "tutan kupon" : "henüz tutan kupon yok"}</div></div>`; };
   h += `<div class="cards">${ORDER.map(sum).join("")}</div>`;
-  if (!active.length) h += `<p class="note">Şu an bekleyen kupon yok. Günün kuponları 09:00'dan sonraki ilk güncellemede hazırlanır.</p>`;
+  if (!active.length) h += `<p class="note">Şu an bekleyen kupon yok. Bir sonraki 4 saatlik taramada, günün kalan maçlarında şartları sağlayan maç olursa kupon hazırlanır.</p>`;
   const ready = active.slice().sort((a, b) => b.p - a.p);
   if (ready.length) {
     h += `<h2>Hazır kuponlar <span class="note">(tutma olasılığı en yüksekten düşüğe)</span></h2>`;
+    if (ready.some((c) => c.kind === "iyskor")) h += `<p class="note">İY skoru kuponlarında her maç için, iddaa'nın <b>"1. Yarı Skoru"</b> seçenekleri arasından (iddaa'da yoksa Bet365 / William Hill İY skoru) modele göre en olası ilk yarı skoru seçilir.</p>`;
     if (ready.some((c) => c.kind === "skor")) h += `<p class="note">Skor kuponlarında sadece iddaa'da <b>"1. Yarı/Maç Sonucu Skorları"</b> bahsi açık maçlar kullanılır. Her maç için en olası İY skoru + 2. yarı skoru seçilir; iddaa'da oynanacak seçenek İY skoru / MS skorudur (MS = İY + 2. yarı). Oranlar iddaa oranıdır.</p>`;
     ready.forEach((c, i) => (h += couponCard(c, i === 0)));
   }
@@ -404,8 +405,9 @@ function renderKupon() {
     h += `</table></div>`;
   }
   const kg = KUPON.iykg_top || [];
+  if (!kg.length) h += `<h2>İY Karşılıklı Gol Var</h2><p class="note">Önümüzdeki 36 saatte tutma olasılığı %43 ve üzeri İY KG Var maçı yok.</p>`;
   if (kg.length) {
-    h += `<h2>İY Karşılıklı Gol Var: önümüzdeki 36 saatin en olası maçları <span class="note">(tutma olasılığı en yüksekten düşüğe; iddaa oranı yoksa Bet365 / William Hill)</span></h2><div class="scroll"><table><tr><th>#</th><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Oran</th><th>Olasılık</th><th>Oranın ima ettiği</th></tr>`;
+    h += `<h2>İY Karşılıklı Gol Var: önümüzdeki 36 saatin en olası maçları <span class="note">(sadece %43 ve üzeri, tutma olasılığı en yüksekten düşüğe; iddaa oranı yoksa Bet365 / William Hill)</span></h2><div class="scroll"><table><tr><th>#</th><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Oran</th><th>Olasılık</th><th>Oranın ima ettiği</th></tr>`;
     kg.forEach((l, i) => (h += `<tr><td>${i + 1}</td><td>${fmtT(l.ts)}</td><td class="l">${esc(l.lg)}</td><td class="l">${esc(l.h)} - ${esc(l.a)}${l.bk && l.bk !== "iddaa" ? ` <span class="note">(${esc(l.bk)})</span>` : ""}</td><td>${l.odd.toFixed(2)}</td><td>%${f1(l.p * 100)}</td><td>%${f1(l.p0 * 100)}</td></tr>`));
     h += `</table></div><p class="note">İY KG Var: ilk yarıda iki takımın da gol atması. Bu bahis nadir tutar (maçların ~%21'i); olasılıklar tahmindir.</p>`;
   }

@@ -60,6 +60,8 @@ def market_odds(markets):
                 k = {"Var": "kgv", "Yok": "kgy"}.get(n)
             elif t == 2 and st == 720:
                 k = {"Var": "ikgv", "Yok": "ikgy"}.get(n)
+            elif t == 2 and st == 717 and n and re.fullmatch(r"\d:\d", n):
+                k = "ics" + n.replace(":", "-")
             if k:
                 out[k] = round(float(odd), 2)
     return out
