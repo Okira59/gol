@@ -6,7 +6,7 @@ William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıkl�
 - Her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından her türden en fazla 2 kupon: İY/MS, İY 1.5/2.5 Üst,
   3.5/4.5/5.5 Üst, MS (1-X-2), İY Karşılıklı Gol Var, İY skoru (sadece iddaa oranı), yüksek oranlı (seçim başına 2.40-6.00)
   ve İY + 2. yarı skoru. Ayrıca her türden 5'li ve 6'lı birer kupon. Tutma olasılığı %36'nın
-  (İY + 2. yarı skoru hariç) ve oranı 2.50'nin altındaki hiçbir seçim kupona alınmaz. Her türde tutma
+  (İY + 2. yarı skoru hariç) ve oranı 1.70'in altındaki hiçbir seçim kupona alınmaz. Her türde tutma
   olasılığı en yüksek seçimler kullanılır. iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 /
   William Hill oranıyla tamamlanır. Ayrıca 9 İY/MS seçeneğinin her biri ve İY KG Var için en olası maçlar listelenir.
 Çıktı: docs/data/kuponlar.json, docs/data/bulten.json (oran arama)
@@ -31,7 +31,7 @@ SLOT_HOURS = 4         # her 4 saatlik dilimde (TR) bir kez, günün kalan maçl
 MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
 HIGH_MIN_P = 0.20
 MIN_LEG_P = 0.36       # tutma olasılığı bunun altındaki hiçbir maç kupona alınmaz (İY + 2. yarı skoru hariç)
-MIN_LEG_ODD = 2.50     # oranı bunun altındaki hiçbir seçim kupona alınmaz
+MIN_LEG_ODD = 1.70     # oranı bunun altındaki hiçbir seçim kupona alınmaz
 BIG_SIZES = [5, 6]     # her türde ayrıca 5'li ve 6'lı birer kupon
 # Günde 12 kupon: her türden 2 adet, tutma olasılığı en yüksek seçimlerden.
 # Kupon 2-5 maçlık; toplam oran en az MIN_ODD (yüksek oranda HIGH_TOTAL).
