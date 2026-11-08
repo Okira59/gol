@@ -311,9 +311,9 @@ function renderSkor() {
 // ---------- kuponlar ----------
 let KUPON = null;
 const fmtT = (ts) => new Date(ts * 1000).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-const KIND = { iyms: "İY/MS", skor: "İY + 2. yarı skoru", iyust: "İY 1.5 / 2.5 Üst", ust: "3.5 / 4.5 / 5.5 Üst", ms: "Maç sonucu (MS)", iykg: "İY KG Var", iyskor: "İY skoru", yuksek: "Yüksek oran",
+const KIND = { iyms: "İY/MS", skor: "İY + 2. yarı skoru", iyust: "İY 1.5 / 2.5 Üst", ust: "3.5 / 4.5 / 5.5 Üst", ust45: "4.5 / 5.5 Üst", ms: "Maç sonucu (MS)", iykg: "İY KG Var", iyskor: "İY skoru", yuksek: "Yüksek oran",
   kisa: "4 saatlik (eski)", gunluk: "Günlük 5-6 maçlık (eski)", iyms_y: "İY/MS yüksek oran (eski)" };
-const ORDER = ["iyms", "skor", "iyskor", "iyust", "ust", "ms", "iykg", "yuksek"];
+const ORDER = ["iyms", "skor", "iyskor", "iyust", "ust", "ust45", "ms", "iykg", "yuksek"];
 const pTxt = (p) => (p >= 0.001 ? `%${(p * 100).toFixed(p >= 0.01 ? 1 : 2)}` : `${Math.round(1 / p).toLocaleString("tr-TR")}'de 1`);
 const mark = (r) => (r === true ? `<span class="pos">✓</span>` : r === false ? `<span class="neg">✗</span>` : "");
 function skorCard(c) {
@@ -380,7 +380,7 @@ function renderKupon() {
   const now = Date.now() / 1000;
   const active = all.filter((c) => c.status === "bekliyor" && Math.max(...c.legs.map((l) => l.ts)) + 2.5 * 3600 > now);
   const done = all.filter((c) => c.status === "kazandı");
-  let h = `<p class="note">Sistem <b>her 4 saatte bir</b> (00, 04, 08, 12, 16, 20 dilimleri) güncel bülteni tarar ve <b>günün kalan iddaa maçlarından</b> kupon hazırlar: İY/MS, İY skoru, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS), İY Karşılıklı Gol Var ve yüksek oranlıdan en fazla 2'şer adet (2-5 maçlık) ve ayrıca her türden <b>4'lü, 5'li ve 6'lı birer kupon</b>,
+  let h = `<p class="note">Sistem <b>her 4 saatte bir</b> (00, 04, 08, 12, 16, 20 dilimleri) güncel bülteni tarar ve <b>günün kalan iddaa maçlarından</b> kupon hazırlar: İY/MS, İY skoru, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS), İY Karşılıklı Gol Var ve yüksek oranlıdan en fazla 2'şer adet (2-5 maçlık) ve ayrıca her türden <b>4'lü, 5'li ve 6'lı birer kupon</b>, sadece <b>4.5 / 5.5 Üst</b> seçimlerinden 4'lü ve 5'li ayrı kuponlar (bu seçimler %36'ya ulaşmadığı için o kuraldan muaftır),
     İY + 2. yarı skorundan 4'lü, 5'li ve 6'lı birer kupon (sadece iddaa'da skor bahsi açık maçlar). <b>Tutma olasılığı %36'nın altındaki</b> (İY + 2. yarı skoru hariç) <b>ve oranı 1.70'in altındaki hiçbir seçim kupona alınmaz</b>; bu yüzden bazı dilimlerde bazı türlerden kupon çıkmayabilir. Kuponlarda toplam oranı <b>5.50'nin altında kupon yoktur</b> (yüksek oranlıda en az 10). Bu şartı sağlayan kombinasyonlar arasından tutma olasılığı en yüksek olan seçilir.
     Oranlar iddaa'dan; iddaa'da olmayan market (çoğunlukla İY/MS) için aynı maçın Bet365 / William Hill oranı kullanılır (tabloda belirtilir).
     Olasılık: oranın ima ettiği olasılık, son 3 ayda aynı oran seviyesindeki maçların gerçek sonuçlarına göre düzeltilir. Son güncelleme: ${fmtT(KUPON.updated)}</p>`;
