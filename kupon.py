@@ -6,7 +6,7 @@ William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıkl�
 - Her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından her türden en fazla 2 kupon: İY/MS, İY 1.5/2.5 Üst,
   3.5/4.5/5.5 Üst, MS (1-X-2), İY Karşılıklı Gol Var, İY skoru (sadece iddaa oranı), yüksek oranlı (seçim başına 2.40-6.00)
   ve İY + 2. yarı skoru. Ayrıca her türden 4'lü, 5'li ve 6'lı birer kupon
-  ve sadece 4.5 / 5.5 Üst'ten 4'lü ve 5'li, İY/MS 1/X, 2/X, 1/2, 2/1'den 2'li ve 3'lü kuponlar
+  ve sadece 4.5 / 5.5 Üst'ten 4'lü ve 5'li, İY/MS 1/X, 2/X, 1/2, 2/1'den (sadece iddaa oranı) 4'lü ve 5'li kuponlar
   (bu ikisi %36 kuralından muaf). Tutma olasılığı %36'nın
   (İY + 2. yarı skoru hariç) ve oranı 1.70'in altındaki hiçbir seçim kupona alınmaz. Her türde tutma
   olasılığı en yüksek seçimler kullanılır. iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 /
@@ -36,7 +36,7 @@ MIN_LEG_P = 0.36       # tutma olasılığı bunun altındaki hiçbir maç kupon
 MIN_LEG_ODD = 1.70     # oranı bunun altındaki hiçbir seçim kupona alınmaz
 BIG_SIZES = [4, 5, 6]  # her türde ayrıca 4'lü, 5'li ve 6'lı birer kupon
 UST45_SIZES = [4, 5]   # 4.5 / 5.5 Üst: ayrı 4'lü ve 5'li kuponlar (bu seçimler %36'ya ulaşmadığı için o kuraldan muaf)
-SURPRISE_SIZES = [2, 3]  # İY/MS 1/X, 2/X, 1/2, 2/1: ayrı 2'li ve 3'lü kuponlar (%36 kuralından muaf)
+SURPRISE_SIZES = [4, 5]  # İY/MS 1/X, 2/X, 1/2, 2/1: sadece iddaa oranlı, ayrı 4'lü ve 5'li kuponlar (%36 kuralından muaf)
 OWN_SIZES = {"ust45": UST45_SIZES, "iyms_s": SURPRISE_SIZES}
 # Günde 12 kupon: her türden 2 adet, tutma olasılığı en yüksek seçimlerden.
 # Kupon 2-5 maçlık; toplam oran en az MIN_ODD (yüksek oranda HIGH_TOTAL).
@@ -57,7 +57,7 @@ DAILY_SET = [
     ("yuksek", None, (2.40, 6.00), HIGH_TOTAL),
 ]
 KINDS = {k for k, *_ in DAILY_SET} | {"skor"}
-BY_P = {"iykg", "iyskor"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
+BY_P = {"iykg", "iyskor", "iyms_s"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
 IYKG = ("ikgv", "ikgy")
 KEEP_DAYS = 30
 SHRINK = 40
@@ -326,6 +326,8 @@ def daily_set(events, table, now, t1=None, used=None):
             c = ht_score_legs(events, now, t1)
         else:
             c = candidates(events, table, now + MIN_LEAD, t1, lo, hi, min_n=40, keys=keys)
+            if kind == "iyms_s":
+                c = [x for x in c if x["bk"] == "iddaa"]
         floor = 0 if kind in OWN_SIZES else max(MIN_LEG_P, HIGH_MIN_P if kind == "yuksek" else 0)
         c = best_per_match([x for x in c if x["p"] >= floor and x["odd"] >= MIN_LEG_ODD], lambda x: x["p"])
         u = used.get(kind, ())
