@@ -1,4 +1,6 @@
-{"updated":1794457472,"cols":["src", "id", "ts", "lg", "h", "a", "fh", "fa", "hh", "ha", "odds"],"rows":[
+{"updated":1794489638,"cols":["src", "id", "ts", "lg", "h", "a", "fh", "fa", "hh", "ha", "odds"],"rows":[
+["iddaa","3370578",1794470400,"U23 Hazırlık Maçları","Tayland U23","Katar U23",1,2,null,null,{"1":[2.35,1.99],"X":[2.89,3.0],"2":[2.35,2.77]}],
+["iddaa","3330646",1794463200,"Uluslararası Hazırlık Maçları","Yeni Zelanda","Hindistan",5,0,3,0,{"1":[1.16,1.21],"X":[4.82,4.54],"2":[7.98,6.82],"o2.5":[1.44,1.44],"io1.5":[2.06,2.06],"kgv":[1.83,1.73]}],
 ["iddaa","3387600",1794448800,"Meksika ExpansionMX Lig,Açılış,Playoff","Piratas Veracruz","Club Atletico La Paz",1,1,0,0,{"1":[1.74,1.59],"X":[3.26,3.5],"2":[3.2,3.53],"o2.5":[1.46,1.4],"io1.5":[2.09,2.01],"kgv":[1.41,1.4]}],
 ["iddaa","3363587",1794445800,"Kolombiya Primera B, Kapanış,Yükselme B","Deportes Quindio","Tigres FC",1,0,0,0,{"1":[1.83,1.47],"X":[2.74,3.27],"2":[3.54,4.82],"o1.5":[1.37,1.37],"o2.5":[1.94,1.91],"io0.5":[1.42,1.29],"kgv":[2.02,1.9]}],
 ["iddaa","3288505",1794445200,"El Salvador 1. Lig, Açılış","CD Fas","Fundacion Formado Un Atleta",2,2,2,1,{"1":[1.68,1.71],"X":[3.23,3.1],"2":[3.43,3.49],"o2.5":[1.7,1.65],"io1.5":[2.46,2.37],"kgv":[1.62,1.56]}],
