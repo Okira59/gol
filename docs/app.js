@@ -461,7 +461,7 @@ function renderAra() {
       <div class="filters"><label>Oran <input id="a-odd" type="text" inputmode="decimal" placeholder="örn. 1.85" style="width:90px"></label>
       <label>Hassasiyet <select id="a-tol"><option value="0">Tam bu oran</option><option value="0.05">± 0.05</option><option value="0.10">± 0.10</option></select></label>
       <label>Zaman <select id="a-day"><option value="1">Bugün</option><option value="0">Tüm bülten (36 saat)</option></select></label>
-      <label>Market <select id="a-mk"><option value="">Hepsi</option><option value="^MS ">Maç sonucu (MS)</option><option value="^İY [12X]$">İlk yarı sonucu</option><option value="^[0-9.]+ (Üst|Alt)">Alt / Üst</option><option value="^İY [0-9.]+ ">İY Alt / Üst</option><option value="^İY/MS">İY/MS</option><option value="^KG">KG Var / Yok</option><option value="^İY KG">İY KG Var / Yok</option></select></label>
+      <label>Market <select id="a-mk">${MK_OPTS}</select></label>
       <button id="a-go">Tara</button></div>
       <div class="filters"><label>Tutma olasılığı (%) <input id="a-prob" type="text" inputmode="decimal" placeholder="örn. %40" style="width:90px"></label>
       <label>Olasılık hassasiyeti <select id="a-ptol"><option value="2">± %2</option><option value="5">± %5</option><option value="10">± %10</option></select></label>
@@ -520,7 +520,19 @@ function runAraP() {
 
 // ---------- tutan oranlar ----------
 let ORAN = null, TG = [];
-const MK_OPTS = `<option value="">Hepsi</option><option value="^MS ">Maç sonucu (MS)</option><option value="^İY [12X]$">İlk yarı sonucu</option><option value="^[0-9.]+ (Üst|Alt)">Alt / Üst</option><option value="^İY [0-9.]+ ">İY Alt / Üst</option><option value="^İY/MS">İY/MS</option><option value="^KG">KG Var / Yok</option><option value="^İY KG">İY KG Var / Yok</option><option value="^İY skoru">İY skoru</option>`;
+const MK_GROUPS = [
+  ["Market grupları", [["^MS ", "Maç sonucu (MS) – hepsi"], ["^İY [12X]$", "İlk yarı sonucu – hepsi"], ["^[0-9.]+ (Üst|Alt)", "Alt / Üst – hepsi"], ["^İY [0-9.]+ ", "İY Alt / Üst – hepsi"], ["^KG", "KG Var / Yok – hepsi"], ["^İY KG", "İY KG Var / Yok – hepsi"], ["^İY/MS", "İY/MS – hepsi"], ["^İY skoru", "İY skoru – hepsi"]]],
+  ["Maç sonucu (MS)", ["MS 1", "MS X", "MS 2"]],
+  ["İlk yarı sonucu (İY)", ["İY 1", "İY X", "İY 2"]],
+  ["Alt / Üst (maç)", [0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5].flatMap((x) => [x.toFixed(1) + " Üst", x.toFixed(1) + " Alt"])],
+  ["İY Alt / Üst", [0.5, 1.5, 2.5, 3.5, 4.5, 5.5].flatMap((x) => ["İY " + x.toFixed(1) + " Üst", "İY " + x.toFixed(1) + " Alt"])],
+  ["Karşılıklı gol", ["KG Var", "KG Yok", "İY KG Var", "İY KG Yok"]],
+  ["İY/MS", ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"].map((x) => "İY/MS " + x)],
+  ["İY skoru", ["0-0", "1-0", "0-1", "1-1", "2-0", "0-2", "2-1", "1-2", "2-2"].map((x) => "İY skoru " + x)],
+];
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+const MK_OPTS = `<option value="">Hepsi</option>` + MK_GROUPS.map(([g, xs]) => `<optgroup label="${g}">` +
+  xs.map((x) => Array.isArray(x) ? `<option value="${esc(x[0])}">${esc(x[1])}</option>` : `<option value="^${esc(reEsc(x))}$">${esc(x)}</option>`).join("") + `</optgroup>`).join("");
 function renderTutan() {
   const el = $("#tab-tutan");
   if (!el.innerHTML) {
@@ -576,7 +588,7 @@ function tutanBulten(v, tol, mk, g) {
     for (const [lab, o, p, ext] of m.o) if (Math.abs(o - v) <= tol && (!mk || mk.test(lab))) rows.push({ m, lab, o, p, ext, x: g.get(lab + "|" + o) });
   }
   rows.sort((a, b) => a.m.ts - b.m.ts || (b.p || 0) - (a.p || 0));
-  let h = `<h2>Bültende bu oranda olan maçlar <span class="note">(önümüzdeki 36 saat)</span></h2><p class="note"><b>${rows.length}</b> seçim, ${new Set(rows.map((r) => r.m.id)).size} maç. "Geçmişte" sütunu: son ${$("#t-day").value} günde aynı seçim ve aynı oranda oynanan / tutan maç sayısı. Bülten güncellemesi: ${fmtT(BULTEN.updated)}</p>`;
+  let h = `<h2>Bültende bu oranda olan maçlar <span class="note">(önümüzdeki 36 saat)</span></h2><p class="note"><b>${rows.length}</b> seçim, ${new Set(rows.map((r) => r.m.id)).size} maç. "Geçmişte" sütunu: son ${$("#t-day").value} günde aynı seçim ve aynı oranda tutan / oynanan maç sayısı. Bülten güncellemesi: ${fmtT(BULTEN.updated)}</p>`;
   if (rows.length) {
     h += `<div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th class="l">Seçim</th><th>Oran</th><th>Tutma olasılığı</th><th>Geçmişte (tutan / oynanan)</th><th>Kaynak</th></tr>`;
     for (const r of rows) {
