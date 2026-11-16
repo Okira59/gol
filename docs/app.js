@@ -563,8 +563,30 @@ function runTutan() {
       h += `<tr data-tg="${i}" style="cursor:pointer"><td class="l"><b>${esc(x.lab)}</b></td><td>${x.o.toFixed(2)}</td><td>${x.n}</td><td>${x.w.length}</td><td class="${r >= imp ? "pos" : "neg"}">%${f1(r)}</td><td>%${f1(imp)}</td></tr>`; });
     h += `</table></div>`;
   }
+  if (v > 1) h = tutanBulten(v, tol, mk, g) + h;
   if (!TG.length) h += `<p class="note">Bu filtrelerle tutan maç bulunamadı. Hassasiyeti ± 0.05 / ± 0.10 yapmayı, "En az maç" sayısını düşürmeyi veya Zaman'ı uzatmayı deneyin.</p>`;
   res.innerHTML = h; $("#t-det").innerHTML = "";
+}
+// Yazılan oran (ve market) bültende hangi maçlarda var; yanında aynı seçim + oranın geçmişi
+function tutanBulten(v, tol, mk, g) {
+  if (!BULTEN) return `<p class="note">Bülten yükleniyor...</p>`;
+  const now = Date.now() / 1000, rows = [];
+  for (const m of BULTEN.matches) {
+    if (m.ts < now) continue;
+    for (const [lab, o, p, ext] of m.o) if (Math.abs(o - v) <= tol && (!mk || mk.test(lab))) rows.push({ m, lab, o, p, ext, x: g.get(lab + "|" + o) });
+  }
+  rows.sort((a, b) => a.m.ts - b.m.ts || (b.p || 0) - (a.p || 0));
+  let h = `<h2>Bültende bu oranda olan maçlar <span class="note">(önümüzdeki 36 saat)</span></h2><p class="note"><b>${rows.length}</b> seçim, ${new Set(rows.map((r) => r.m.id)).size} maç. "Geçmişte" sütunu: son ${$("#t-day").value} günde aynı seçim ve aynı oranda oynanan / tutan maç sayısı. Bülten güncellemesi: ${fmtT(BULTEN.updated)}</p>`;
+  if (rows.length) {
+    h += `<div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th class="l">Seçim</th><th>Oran</th><th>Tutma olasılığı</th><th>Geçmişte (tutan / oynanan)</th><th>Kaynak</th></tr>`;
+    for (const r of rows) {
+      const x = r.x, i = x ? TG.indexOf(x) : -1;
+      const hist = x ? `${x.w.length} / ${x.n} <span class="note">(%${f1((x.w.length / x.n) * 100)})</span>` : "-";
+      h += `<tr${i >= 0 ? ` data-tg="${i}" style="cursor:pointer"` : ""}><td>${fmtT(r.m.ts)}</td><td class="l">${esc(r.m.lg)}</td><td class="l">${esc(r.m.h)} - ${esc(r.m.a)}</td><td class="l"><b>${esc(r.lab)}</b></td><td>${r.o.toFixed(2)}</td><td>${r.p ? `%${f1(r.p * 100)}` : "-"}</td><td>${hist}</td><td>${r.ext ? "Bet365/WH" : "iddaa"}</td></tr>`;
+    }
+    h += `</table></div>`;
+  }
+  return h + `<h2>Geçmişte bu oranda tutan maçlar</h2>`;
 }
 function tutanDetail(i) {
   const x = TG[i]; if (!x) return;
@@ -651,5 +673,5 @@ renderTutan();
 fetch("data/oranlar.json?" + Date.now()).then((r) => r.json()).then((d) => { ORAN = d; runTutan(); })
   .catch(() => { ORAN = { matches: [], labels: {}, updated: 0 }; runTutan(); });
 document.addEventListener("keydown", (e) => { if (e.target.id === "t-odd" && e.key === "Enter") runTutan(); else if (e.target.id === "a-odd" && e.key === "Enter") runAra(); else if (e.target.id === "a-prob" && e.key === "Enter") runAraP(); });
-fetch("data/bulten.json?" + Date.now()).then((r) => r.json()).then((d) => { BULTEN = d; })
+fetch("data/bulten.json?" + Date.now()).then((r) => r.json()).then((d) => { BULTEN = d; if ($("#t-res") && $("#t-odd").value) runTutan(); })
   .catch(() => { BULTEN = { matches: [], updated: 0 }; });
