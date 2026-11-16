@@ -458,7 +458,7 @@ function renderAra() {
   if (!el.innerHTML) {
     el.innerHTML = `<p class="note">Bir oran yazın, iddaa bültenindeki (önümüzdeki 36 saat) sadece o orana sahip maçlar ve seçenekler listelensin.
       Ya da bir tutma olasılığı yazın, modelin o olasılığa yakın gördüğü seçimler listelensin (oran dikkate alınmaz).</p>
-      <div class="filters"><label>Oran <input id="a-odd" type="number" step="0.01" min="1" placeholder="örn. 1.85" style="width:90px"></label>
+      <div class="filters"><label>Oran <input id="a-odd" type="text" inputmode="decimal" placeholder="örn. 1.85" style="width:90px"></label>
       <label>Hassasiyet <select id="a-tol"><option value="0">Tam bu oran</option><option value="0.05">± 0.05</option><option value="0.10">± 0.10</option></select></label>
       <label>Zaman <select id="a-day"><option value="1">Bugün</option><option value="0">Tüm bülten (36 saat)</option></select></label>
       <label>Market <select id="a-mk"><option value="">Hepsi</option><option value="^MS ">Maç sonucu (MS)</option><option value="^İY [12X]$">İlk yarı sonucu</option><option value="^[0-9.]+ (Üst|Alt)">Alt / Üst</option><option value="^İY [0-9.]+ ">İY Alt / Üst</option><option value="^İY/MS">İY/MS</option><option value="^KG">KG Var / Yok</option><option value="^İY KG">İY KG Var / Yok</option></select></label>
@@ -525,7 +525,7 @@ function renderTutan() {
   const el = $("#tab-tutan");
   if (!el.innerHTML) {
     el.innerHTML = `<p class="note">Sonuçlanmış iddaa maçlarında aynı seçim ve aynı orandan (ör. 3.5 Üst 1.88) kaç maç oynandığını ve kaçının tuttuğunu bir arada gösterir. Satıra tıklayınca o oranda tutan maçlar listelenir. Oran, iddaa'nın maç öncesi son oranıdır.</p>
-      <div class="filters"><label>Oran <input id="t-odd" type="number" step="0.01" min="1" placeholder="örn. 1.88 (boş = hepsi)" style="width:150px"></label>
+      <div class="filters"><label>Oran <input id="t-odd" type="text" inputmode="decimal" placeholder="örn. 1.88 (boş = hepsi)" style="width:150px"></label>
       <label>Hassasiyet <select id="t-tol"><option value="0">Tam bu oran</option><option value="0.05">± 0.05</option><option value="0.10">± 0.10</option></select></label>
       <label>Market <select id="t-mk">${MK_OPTS}</select></label>
       <label>Zaman <select id="t-day"><option value="7">Son 7 gün</option><option value="14">Son 14 gün</option><option value="30" selected>Son 30 gün</option></select></label>
@@ -563,6 +563,7 @@ function runTutan() {
       h += `<tr data-tg="${i}" style="cursor:pointer"><td class="l"><b>${esc(x.lab)}</b></td><td>${x.o.toFixed(2)}</td><td>${x.n}</td><td>${x.w.length}</td><td class="${r >= imp ? "pos" : "neg"}">%${f1(r)}</td><td>%${f1(imp)}</td></tr>`; });
     h += `</table></div>`;
   }
+  if (!TG.length) h += `<p class="note">Bu filtrelerle tutan maç bulunamadı. Hassasiyeti ± 0.05 / ± 0.10 yapmayı, "En az maç" sayısını düşürmeyi veya Zaman'ı uzatmayı deneyin.</p>`;
   res.innerHTML = h; $("#t-det").innerHTML = "";
 }
 function tutanDetail(i) {
