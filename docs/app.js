@@ -503,8 +503,8 @@ function runAra() {
   araMode = "odd";
   const tol = +$("#a-tol").value + 0.001;
   const rows = araScan((o) => Math.abs(o - v) <= tol);
-  rows.sort((a, b) => a.m.ts - b.m.ts || (b.p || 0) - (a.p || 0));
-  res.innerHTML = araTable(rows, false);
+  rows.sort((a, b) => (b.p || 0) - (a.p || 0) || a.m.ts - b.m.ts);
+  res.innerHTML = `<p class="note">Tutma olasılığı en yüksekten düşüğe sıralı.</p>` + araTable(rows, false);
 }
 function runAraP() {
   const res = $("#a-res");
@@ -514,8 +514,8 @@ function runAraP() {
   araMode = "prob";
   const t = v / 100, tol = +$("#a-ptol").value / 100 + 1e-9;
   const rows = araScan((o, p) => p > 0 && Math.abs(p - t) <= tol);
-  rows.sort((a, b) => Math.abs(a.p - t) - Math.abs(b.p - t) || b.p - a.p);
-  res.innerHTML = `<p class="note">Hedef: <b>%${f1(v)}</b> ± %${$("#a-ptol").value} (yakınlığa göre sıralı)</p>` + araTable(rows, true);
+  rows.sort((a, b) => b.p - a.p || a.m.ts - b.m.ts);
+  res.innerHTML = `<p class="note">Hedef: <b>%${f1(v)}</b> ± %${$("#a-ptol").value} (tutma olasılığı en yüksekten düşüğe sıralı)</p>` + araTable(rows, true);
 }
 
 // ---------- tutan oranlar ----------
@@ -565,10 +565,10 @@ function runTutan() {
       const x = g.get(id); x.n++; if (r) x.w.push(m);
     }
   }
-  TG = [...g.values()].filter((x) => x.n >= min && x.w.length).sort((a, b) => b.w.length - a.w.length || b.w.length / b.n - a.w.length / a.n);
+  TG = [...g.values()].filter((x) => x.n >= min && x.w.length).sort((a, b) => b.w.length / b.n - a.w.length / a.n || b.n - a.n);
   const all = TG.length;
   TG = TG.slice(0, 300);
-  let h = `<p class="note"><b>${all}</b> seçim / oran grubunda tutan maç var${all > 300 ? " (en çok tutan 300 grup gösteriliyor)" : ""}. Tutan maç sayısına göre sıralı. Son güncelleme: ${fmtT(ORAN.updated)}</p>`;
+  let h = `<p class="note"><b>${all}</b> seçim / oran grubunda tutan maç var${all > 300 ? " (tutma oranı en yüksek 300 grup gösteriliyor)" : ""}. Tutma oranı en yüksekten düşüğe sıralı. Son güncelleme: ${fmtT(ORAN.updated)}</p>`;
   if (TG.length) {
     h += `<div class="scroll"><table><tr><th class="l">Seçim</th><th>Oran</th><th>Oynanan maç</th><th>Tutan maç</th><th>Tutma oranı</th><th>Oranın ima ettiği</th></tr>`;
     TG.forEach((x, i) => { const r = (x.w.length / x.n) * 100, imp = 100 / x.o;
@@ -587,8 +587,8 @@ function tutanBulten(v, tol, mk, g) {
     if (m.ts < now) continue;
     for (const [lab, o, p, ext] of m.o) if (Math.abs(o - v) <= tol && (!mk || mk.test(lab))) rows.push({ m, lab, o, p, ext, x: g.get(lab + "|" + o) });
   }
-  rows.sort((a, b) => a.m.ts - b.m.ts || (b.p || 0) - (a.p || 0));
-  let h = `<h2>Bültende bu oranda olan maçlar <span class="note">(önümüzdeki 36 saat)</span></h2><p class="note"><b>${rows.length}</b> seçim, ${new Set(rows.map((r) => r.m.id)).size} maç. "Geçmişte" sütunu: son ${$("#t-day").value} günde aynı seçim ve aynı oranda tutan / oynanan maç sayısı. Bülten güncellemesi: ${fmtT(BULTEN.updated)}</p>`;
+  rows.sort((a, b) => (b.p || 0) - (a.p || 0) || a.m.ts - b.m.ts);
+  let h = `<h2>Bültende bu oranda olan maçlar <span class="note">(önümüzdeki 36 saat, tutma olasılığı en yüksekten düşüğe)</span></h2><p class="note"><b>${rows.length}</b> seçim, ${new Set(rows.map((r) => r.m.id)).size} maç. "Geçmişte" sütunu: son ${$("#t-day").value} günde aynı seçim ve aynı oranda tutan / oynanan maç sayısı. Bülten güncellemesi: ${fmtT(BULTEN.updated)}</p>`;
   if (rows.length) {
     h += `<div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th class="l">Seçim</th><th>Oran</th><th>Tutma olasılığı</th><th>Geçmişte (tutan / oynanan)</th><th>Kaynak</th></tr>`;
     for (const r of rows) {
