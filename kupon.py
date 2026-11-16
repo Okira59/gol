@@ -56,7 +56,7 @@ DAILY_SET = [
     ("iyskor", None, (1.01, 50.0), MIN_ODD),
     ("yuksek", None, (2.40, 6.00), HIGH_TOTAL),
 ]
-KINDS = {k for k, *_ in DAILY_SET} | {"skor"}
+KINDS = {k for k, *_ in DAILY_SET} | {"skor", "skor3"}
 BY_P = {"iykg", "iyskor", "iyms_s"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
 IYKG = ("ikgv", "ikgy")
 KEEP_DAYS = 30
@@ -390,6 +390,104 @@ def score_coupons(events, now, t1=None):
     return out
 
 
+def skor3_coupons(events, now, t1=None, used=()):
+    """İY / 2. yarı / MS skoru kuponları (model): her maç için en olası MS skoru ve onu oluşturan en olası
+    İY + 2. yarı ayrımı. 4, 5 ve 6 maçlık; MS skoru olasılığı en yüksek maçlardan (maçlar çakışmaz).
+    iddaa'da MS / 2. yarı skoru bahsi olmadığı için oran yerine Bet365 / William Hill MS skor oranı sadece bilgi."""
+    import skor as S
+    t1 = t1 or day_end(now)
+    legs = []
+    for e in events:
+        if not (now + MIN_LEAD <= e["ts"] < t1) or e["id"] in used:
+            continue
+        r = S.predict(e["odds"])
+        if not r:
+            continue
+        b = S.best_score(r[0])
+        leg = {"id": e["id"], "ts": e["ts"], "lg": e["lg"], "h": e["h"], "a": e["a"], "k": "sk3",
+               "ht": b["ht"], "sh": b["sh"], "ft": b["ft"], "p_ht": b["p_ht"], "p_sh": b["p_sh"], "p_ft": b["p_ft"]}
+        o = e["odds"].get("cs" + b["ft"])
+        o = o[0] if isinstance(o, list) else o
+        if o:
+            leg["ref"] = o
+        legs.append(leg)
+    legs.sort(key=lambda l: -l["p_ft"])
+    out, i = [], 0
+    distinct = len(legs) >= sum(SCORE_SIZES)
+    for n in SCORE_SIZES:
+        part = legs[i:i + n] if distinct else legs[:n]
+        if len(part) < n:
+            break
+        if distinct:
+            i += n
+        c = {"cid": f"skor3-{now}-{len(out)}", "kind": "skor3", "created": now,
+             "legs": sorted(part, key=lambda l: l["ts"]), "status": "bekliyor"}
+        for k in ("ht", "sh", "ft"):
+            c["p_" + k] = float(f"{prod(l['p_' + k] for l in part):.3g}")
+        c["p"] = c["p_ft"]
+        if all("ref" in l for l in part):
+            c["ref"] = round(prod(l["ref"] for l in part), 2)
+        out.append(c)
+    return out
+
+
+def settle_skor3(cp, results):
+    """Her maçın İY, 2. yarı ve MS skoru ayrı ayrı; kuponun üç parçası (İY skorları, 2. yarı skorları,
+    MS skorları) ayrı sonuçlanır. Parçalardan biri tutarsa kupon 'kazandı' sayılır."""
+    for l in cp["legs"]:
+        m = results.get(l["id"])
+        if "r_ft" in l or not m or "fh" not in m or m.get("hh") is None:
+            continue
+        fh, fa, hh, ha = m["fh"], m["fa"], m["hh"], m["ha"]
+        l["r_ht"] = f"{hh}-{ha}" == l["ht"]
+        l["r_sh"] = f"{fh - hh}-{fa - ha}" == l["sh"]
+        l["r_ft"] = f"{fh}-{fa}" == l["ft"]
+        l["score"] = f"{hh}-{ha} / {fh}-{fa}"
+    old = time.time() - max(l["ts"] for l in cp["legs"]) > 4 * 86400
+    parts = {}
+    for k in ("ht", "sh", "ft"):
+        rs = [l.get("r_" + k) for l in cp["legs"]]
+        parts[k] = "kaybetti" if False in rs else "kazandı" if all(rs) else "sonuçsuz" if old else "bekliyor"
+    cp["parts"] = parts
+    v = set(parts.values())
+    cp["status"] = ("kazandı" if "kazandı" in v else "bekliyor" if "bekliyor" in v
+                    else "kaybetti" if v == {"kaybetti"} else "sonuçsuz")
+
+
+def iykg_track(state, top, results, now):
+    """İY KG Var listesinde verilen maçların geçmişi (ilk listelendiği oran / olasılık) ve sonuçları."""
+    hist = {h["id"]: h for h in state.get("iykg_hist", [])}
+    for l in top:
+        if l["id"] not in hist:
+            hist[l["id"]] = {k: l[k] for k in ("id", "ts", "lg", "h", "a", "odd", "p", "bk")}
+    for h in hist.values():
+        m = results.get(h["id"])
+        if "r" not in h and m and "fh" in m and m.get("hh") is not None:
+            h["r"] = m["hh"] > 0 and m["ha"] > 0
+            h["score"] = f"{m['hh']}-{m['ha']} / {m['fh']}-{m['fa']}"
+    state["iykg_hist"] = sorted((h for h in hist.values() if h["ts"] >= now - KEEP_DAYS * 86400),
+                                key=lambda h: -h["ts"])
+
+
+def odds_history(iddaa, now):
+    """Tutan Oranlar sekmesi için: son KEEP_DAYS gündeki sonuçlanmış iddaa maçları, son iddaa oranları ve
+    her seçimin tutup tutmadığı. [ts, lig, ev, dep, "İY", "MS", [[anahtar, oran, tuttu], ...]]"""
+    rows, keys = [], set()
+    for e in sorted(iddaa.values(), key=lambda x: -x["ts"]):
+        if "fh" not in e or e.get("hh") is None or e["ts"] < now - KEEP_DAYS * 86400:
+            continue
+        o = []
+        for k, v in e.get("odds", {}).items():
+            odd = v[0] if isinstance(v, list) else v
+            r = outcome(k, e["fh"], e["fa"], e["hh"], e["ha"])
+            if odd and r is not None:
+                o.append([k, odd, int(r)])
+                keys.add(k)
+        if o:
+            rows.append([e["ts"], e["lg"], e["h"], e["a"], f"{e['hh']}-{e['ha']}", f"{e['fh']}-{e['fa']}", o])
+    return {"updated": now, "labels": {k: label(k) for k in sorted(keys)}, "matches": rows}
+
+
 def bulletin(events, table, now):
     """Oran arama için bülten: önümüzdeki 36 saatteki iddaa maçları ve tüm oranları."""
     out = []
@@ -433,6 +531,10 @@ def iykg_top(events, table, now, per=10):
 
 def settle(coupons, results):
     for cp in coupons:
+        if cp["kind"] == "skor3":
+            if cp["status"] == "bekliyor":
+                settle_skor3(cp, results)
+            continue
         sk = cp["kind"] == "skor"
         old_sk = sk and any("ft" in l for l in cp["legs"])
         if cp["status"] != "bekliyor" and not (old_sk and "ms" not in cp):
@@ -495,7 +597,8 @@ def main():
             state = json.load(f)
     coupons = state.get("coupons", [])
     iddaa = load("iddaa.json")
-    settle(coupons, {**load("fs_matches.json"), **iddaa})
+    results = {**load("fs_matches.json"), **iddaa}
+    settle(coupons, results)
     # sonuçlananlardan sadece tutan kuponlar saklanır
     coupons = [c for c in coupons if c["status"] in ("bekliyor", "kazandı")]
 
@@ -517,9 +620,11 @@ def main():
         sc = [c for c in score_coupons(events, now)
               if not used.get("skor", set()) & {l["id"] for l in c["legs"]}]
         made += sc
+        made += skor3_coupons(events, now, used=used.get("skor3", set()))
         state["last_slot"] = slot
     state["iyms_top"] = iyms_top(events, table, now)
     state["iykg_top"] = iykg_top(events, table, now)
+    iykg_track(state, state["iykg_top"], results, now)
     coupons += made
 
     cutoff = now - KEEP_DAYS * 86400
@@ -533,6 +638,8 @@ def main():
         f.write("\n]}\n")
     with open(os.path.join(os.path.dirname(OUT), "bulten.json"), "w", encoding="utf-8") as f:
         json.dump(bulletin(events, table, now), f, ensure_ascii=False, separators=(",", ":"))
+    with open(os.path.join(os.path.dirname(OUT), "oranlar.json"), "w", encoding="utf-8") as f:
+        json.dump(odds_history(iddaa, now), f, ensure_ascii=False, separators=(",", ":"))
     print(f"kupon: {len(made)} yeni kupon, toplam {len(coupons)}")
 
 
