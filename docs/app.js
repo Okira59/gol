@@ -471,9 +471,34 @@ function renderSkorKupon() {
     h += `<h2>Hazır skor kuponları <span class="note">(tutma olasılığı en yüksekten düşüğe)</span></h2>`;
     ready.forEach((c, i) => (h += couponCard(c, i === 0)));
   } else h += `<p class="note">Şu an bekleyen skor kuponu yok. Bir sonraki 4 saatlik taramada, günün kalan maçlarında şartları sağlayan maç olursa kupon hazırlanır.</p>`;
+  h += skorHist();
   const past = done.sort((a, b) => wonAt(b) - wonAt(a)).slice(0, 40);
   if (past.length) { h += `<h2>Tutan skor kuponları <span class="note">(en son tutandan eskiye)</span></h2>`; past.forEach((c) => (h += couponCard(c, false))); }
   el.innerHTML = h;
+}
+
+const TRDAY = (ts) => new Date(ts * 1000).toLocaleDateString("tr-TR", { timeZone: "Europe/Istanbul", weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" });
+// Skor kuponlarındaki maçlardan tahmini tutanlar (kupon yatsa da), gün gün
+function skorHist() {
+  const hs = KUPON.skor_hist || [];
+  if (!hs.length) return `<h2>Skor tahminlerinde tutan maçlar</h2><p class="note">Henüz sonuçlanmış skor tahmini yok.</p>`;
+  const st = {};
+  for (const x of hs) for (const [k, , , r] of x.parts) { const s = (st[k] = st[k] || [0, 0]); s[1]++; if (r) s[0]++; }
+  const won = hs.filter((x) => x.parts.some((p) => p[3]));
+  let h = `<h2>Skor tahminlerinde tutan maçlar <span class="note">(kupon yatsa da; en yeniden eskiye)</span></h2>
+    <p class="note">Skor kuponlarında yer alıp sonuçlanan <b>${hs.length}</b> maçtan <b>${won.length}</b> tanesinde en az bir skor tahmini tuttu. ` +
+    Object.entries(st).map(([k, [w, n]]) => `${k}: <b>${w} / ${n}</b> (%${f1((w / n) * 100)})`).join(" · ") + `</p>`;
+  if (!won.length) return h;
+  h += `<div class="scroll"><table><tr><th>Gün</th><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th class="l">Kupon türü</th><th class="l">Tutan tahmin</th><th class="l">Tutmayan tahmin</th><th>Oran (iddaa)</th><th>Gerçek skor (İY / MS)</th></tr>`;
+  let day = "";
+  for (const x of won) {
+    const d = TRDAY(x.ts), t = new Date(x.ts * 1000).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" });
+    const pt = (ok) => x.parts.filter((p) => !!p[3] === ok).map((p) => `${p[0]} <b>${esc(p[1])}</b> <span class="note">%${f1(p[2] * 100)}</span> ${mark(p[3])}`).join("<br>") || "-";
+    h += `<tr><td>${d === day ? "" : `<b>${d}</b>`}</td><td>${t}</td><td class="l">${esc(x.lg)}</td><td class="l">${esc(x.h)} - ${esc(x.a)}</td><td class="l">${KIND[x.kind] || x.kind}</td>
+      <td class="l">${pt(true)}</td><td class="l">${pt(false)}</td><td>${x.odd ? x.odd.toFixed(2) : "-"}</td><td>${x.score ? esc(x.score) : "-"}</td></tr>`;
+    day = d;
+  }
+  return h + `</table></div>`;
 }
 
 // ---------- oran arama ----------
@@ -625,6 +650,61 @@ function tutanBulten(v, tol, mk, g) {
   }
   return h + `<h2>Geçmişte bu oranda tutan maçlar</h2>`;
 }
+// ---------- günlük tutan oranlar ----------
+let GG = [];
+const dayKey = (ts) => new Date(ts * 1000).toLocaleDateString("sv-SE", { timeZone: "Europe/Istanbul" });
+function renderGunluk() {
+  const el = $("#tab-gunluk");
+  if (!ORAN) { el.innerHTML = `<p class="note">Veri yükleniyor...</p>`; return; }
+  if (!$("#g-day")) {
+    const days = new Map();
+    for (const m of ORAN.matches) { const k = dayKey(m[0]); if (!days.has(k)) days.set(k, [m[0], 0]); days.get(k)[1]++; }
+    const ds = [...days.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+    el.innerHTML = `<p class="note">Hangi gün hangi seçimin hangi oranda tuttuğunu gösterir (tüm marketler; ör. Salı · 1.5 Üst 1.88 · İY/MS 1/2 25.00). Sonuçlanmış iddaa maçları, iddaa'nın maç öncesi son oranı. Satıra tıklayınca o gün o oranda tutan maçlar listelenir.</p>
+      <div class="filters"><label>Gün <select id="g-day"><option value="7">Son 7 gün (gün gün)</option>${ds.map(([k, [ts, n]]) => `<option value="${k}">${TRDAY(ts)} (${n} maç)</option>`).join("")}</select></label>
+      <label>Market <select id="g-mk">${MK_OPTS}</select></label>
+      <label>En düşük oran <input id="g-min" type="text" inputmode="decimal" placeholder="örn. 1,50 (boş = hepsi)" style="width:150px"></label>
+      <label>Sıralama <select id="g-sort"><option value="odd">Oran (yüksekten düşüğe)</option><option value="n">Tutan maç sayısı</option><option value="lab">Market</option></select></label></div>
+      <div id="g-res"></div>`;
+    if (ds.length) $("#g-day").value = ds[0][0];
+  }
+  runGunluk();
+}
+function runGunluk() {
+  const res = $("#g-res");
+  if (!res || !ORAN) return;
+  const dv = $("#g-day").value, mk = $("#g-mk").value ? new RegExp($("#g-mk").value) : null;
+  const min = parseFloat(String($("#g-min").value).replace(",", ".")) || 0, so = $("#g-sort").value;
+  let days = [...new Set(ORAN.matches.map((m) => dayKey(m[0])))].sort().reverse();
+  days = dv === "7" ? days.slice(0, 7) : [dv];
+  const LIM = dv === "7" ? 60 : 400;
+  GG = [];
+  let h = `<p class="note">Son güncelleme: ${fmtT(ORAN.updated)}</p>`;
+  for (const d of days) {
+    const g = new Map(), ms = ORAN.matches.filter((m) => dayKey(m[0]) === d);
+    for (const m of ms) for (const [k, o, r] of m[6]) {
+      if (o < min) continue;
+      const lab = ORAN.labels[k] || k;
+      if (mk && !mk.test(lab)) continue;
+      const id = lab + "|" + o;
+      if (!g.has(id)) g.set(id, { lab, o, n: 0, w: [] });
+      const x = g.get(id); x.n++; if (r) x.w.push(m);
+    }
+    let rows = [...g.values()].filter((x) => x.w.length);
+    rows.sort(so === "n" ? (a, b) => b.w.length - a.w.length || b.o - a.o : so === "lab" ? (a, b) => a.lab.localeCompare(b.lab, "tr") || b.o - a.o : (a, b) => b.o - a.o || b.w.length - a.w.length);
+    const tot = rows.length; rows = rows.slice(0, LIM);
+    h += `<h2>${ms.length ? TRDAY(ms[0][0]) : d} <span class="note">(${ms.length} maç · ${tot} seçim / oran tuttu${tot > LIM ? `, ilk ${LIM} gösteriliyor` : ""})</span></h2>`;
+    if (!rows.length) { h += `<p class="note">Bu filtrelerle tutan oran yok.</p>`; continue; }
+    h += `<div class="scroll"><table><tr><th class="l">Seçim</th><th>Oran</th><th>Tutan maç</th><th>O gün bu oranda oynanan</th><th class="l">Tutan maçlar</th></tr>`;
+    for (const x of rows) {
+      const i = GG.push(x) - 1, names = x.w.slice(0, 3).map((m) => `${esc(m[2])} - ${esc(m[3])} <span class="note">(${m[4]} / ${m[5]})</span>`).join(", ");
+      h += `<tr data-gg="${i}" style="cursor:pointer"><td class="l"><b>${esc(x.lab)}</b></td><td><b>${x.o.toFixed(2)}</b></td><td>${x.w.length}</td><td>${x.n}</td><td class="l">${names}${x.w.length > 3 ? ` <span class="note">+${x.w.length - 3}</span>` : ""}</td></tr>`;
+      h += `<tr class="gg-d" id="gg-${i}" style="display:none"><td colspan="5" class="l">${x.w.map((m) => `${fmtT(m[0])} · ${esc(m[1])} · <b>${esc(m[2])} - ${esc(m[3])}</b> · İY ${m[4]} / MS ${m[5]}`).join("<br>")}</td></tr>`;
+    }
+    h += `</table></div>`;
+  }
+  res.innerHTML = h;
+}
 function tutanDetail(i) {
   const x = TG[i]; if (!x) return;
   let h = `<h2>${esc(x.lab)} ${x.o.toFixed(2)}: tutan ${x.w.length} maç <span class="note">(${x.n} maçtan)</span></h2><div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Skor (İY / MS)</th></tr>`;
@@ -671,6 +751,7 @@ document.addEventListener("click", (e) => {
   else if (b.id === "a-go") runAra();
   else if (b.id === "a-pgo") runAraP();
   else if (b.id === "t-go") runTutan();
+  else if (b.closest && b.closest("[data-gg]")) { const d = $("#gg-" + b.closest("[data-gg]").dataset.gg); d.style.display = d.style.display === "none" ? "" : "none"; }
   else if (b.closest && b.closest("[data-tg]")) tutanDetail(+b.closest("[data-tg]").dataset.tg);
 });
 document.addEventListener("change", (e) => {
@@ -679,6 +760,7 @@ document.addEventListener("change", (e) => {
   else if (id === "a-odd" || id === "a-tol") { if ($("#a-odd").value) runAra(); }
   else if (id.startsWith("a-")) { if (araMode === "prob" && $("#a-prob").value) runAraP(); else if ($("#a-odd").value) runAra(); }
   else if (id.startsWith("t-")) runTutan();
+  else if (id.startsWith("g-") && !["g-ust", "g-iy", "g-iyms"].includes(id)) runGunluk();
   else if (id.startsWith("f-")) { state.listN = 200; applyFilters(); }
   else if (id === "g-ust") { state.ustGroup = e.target.value; renderUst(); }
   else if (id === "g-iy") { state.iyGroup = e.target.value; renderIy(); }
@@ -707,8 +789,8 @@ fetch("data/kuponlar.json?" + Date.now()).then((r) => r.json()).then((d) => { KU
   .catch(() => { KUPON = { coupons: [], updated: 0 }; renderKupon(); });
 renderAra();
 renderTutan();
-fetch("data/oranlar.json?" + Date.now()).then((r) => r.json()).then((d) => { ORAN = d; runTutan(); })
-  .catch(() => { ORAN = { matches: [], labels: {}, updated: 0 }; runTutan(); });
+fetch("data/oranlar.json?" + Date.now()).then((r) => r.json()).then((d) => { ORAN = d; runTutan(); renderGunluk(); })
+  .catch(() => { ORAN = { matches: [], labels: {}, updated: 0 }; runTutan(); renderGunluk(); });
 document.addEventListener("keydown", (e) => { if (e.target.id === "t-odd" && e.key === "Enter") runTutan(); else if (e.target.id === "a-odd" && e.key === "Enter") runAra(); else if (e.target.id === "a-prob" && e.key === "Enter") runAraP(); });
 fetch("data/bulten.json?" + Date.now()).then((r) => r.json()).then((d) => { BULTEN = d; if ($("#t-res") && $("#t-odd").value) runTutan(); })
   .catch(() => { BULTEN = { matches: [], updated: 0 }; });

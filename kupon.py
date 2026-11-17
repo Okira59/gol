@@ -59,6 +59,7 @@ DAILY_SET = [
     ("yuksek", None, (2.40, 6.00), HIGH_TOTAL),
 ]
 KINDS = {k for k, *_ in DAILY_SET} | {"skor", "skor3"}
+SCORE_KINDS = ("iyskor", "skor", "skor3")
 BY_P = {"iykg", "iyskor", "iyms_s"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
 IYKG = ("ikgv", "ikgy")
 KEEP_DAYS = 30
@@ -474,6 +475,46 @@ def settle_skor3(cp, results):
                     else "kaybetti" if v == {"kaybetti"} else "sonuçsuz")
 
 
+def score_rec(kind, l):
+    """Skor kuponundaki sonuçlanmış bir maçın tahminleri: [bölüm, tahmin, olasılık, tuttu]."""
+    if kind == "iyskor":
+        if "r" not in l:
+            return None
+        parts = [["İY skoru", l["k"][3:], l["p"], l["r"]]]
+    elif kind == "skor":
+        if "r_ht" not in l:
+            return None
+        parts = [["İY skoru", l["ht"], l["p_ht"], l["r_ht"]], ["2. yarı skoru", l["sh"], l["p_sh"], l["r_sh"]]]
+        if "r_ft" in l:
+            parts.append(["İY / MS skoru", f"{l['ht']} / {l['ft']}", l["p"], l["r_ht"] and l["r_ft"]])
+    else:
+        if "r_ft" not in l:
+            return None
+        parts = [["İY skoru", l["ht"], l["p_ht"], l["r_ht"]], ["2. yarı skoru", l["sh"], l["p_sh"], l["r_sh"]],
+                 ["MS skoru", l["ft"], l["p_ft"], l["r_ft"]]]
+    rec = {"kind": kind, "id": l["id"], "ts": l["ts"], "lg": l["lg"], "h": l["h"], "a": l["a"],
+           "score": l.get("score"), "parts": parts}
+    if l.get("odd"):
+        rec["odd"] = l["odd"]
+    return rec
+
+
+def score_track(state, coupons, now):
+    """Skor kuponlarındaki maçların sonuçları (kupon yatsa da saklanır): tutan maçları analiz için."""
+    hist = {f"{h['kind']}|{h['id']}": h for h in state.get("skor_hist", [])}
+    for c in coupons:
+        if c["kind"] not in SCORE_KINDS:
+            continue
+        for l in c["legs"]:
+            key = f"{c['kind']}|{l['id']}"
+            if key not in hist:
+                rec = score_rec(c["kind"], l)
+                if rec:
+                    hist[key] = rec
+    state["skor_hist"] = sorted((h for h in hist.values() if h["ts"] >= now - KEEP_DAYS * 86400),
+                                key=lambda h: -h["ts"])
+
+
 def iykg_track(state, top, results, now):
     """İY KG Var listesinde verilen maçların geçmişi (ilk listelendiği oran / olasılık) ve sonuçları."""
     hist = {h["id"]: h for h in state.get("iykg_hist", [])}
@@ -619,6 +660,7 @@ def main():
     iddaa = load("iddaa.json")
     results = {**load("fs_matches.json"), **iddaa}
     settle(coupons, results)
+    score_track(state, coupons, now)
     # sonuçlananlardan sadece tutan kuponlar saklanır
     coupons = [c for c in coupons if c["status"] in ("bekliyor", "kazandı")]
 
