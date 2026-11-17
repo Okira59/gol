@@ -5,7 +5,8 @@ Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0)
 William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
 - Her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından her türden en fazla 2 kupon: İY/MS, İY 1.5/2.5 Üst,
   3.5/4.5/5.5 Üst, MS (1-X-2), İY Karşılıklı Gol Var, İY skoru (sadece iddaa oranı), yüksek oranlı (seçim başına 2.40-6.00)
-  ve İY + 2. yarı skoru. Bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır. Ayrıca her türden 4'lü, 5'li ve 6'lı birer kupon
+  ve İY + 2. yarı skoru. Bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır,
+  iki kupon en fazla 1 ortak maç paylaşır. Ayrıca her türden 4'lü, 5'li ve 6'lı birer kupon
   ve sadece 4.5 / 5.5 Üst'ten 4'lü ve 5'li, İY/MS 1/X, 2/X, 1/2, 2/1'den (sadece iddaa oranı) 4'lü ve 5'li kuponlar
   (bu ikisi %36 kuralından muaf). Tutma olasılığı %36'nın
   (İY + 2. yarı skoru hariç) ve oranı 1.70'in altındaki hiçbir seçim kupona alınmaz. Her türde tutma
@@ -36,6 +37,7 @@ HIGH_MIN_P = 0.20
 MIN_LEG_P = 0.36       # tutma olasılığı bunun altındaki hiçbir maç kupona alınmaz (İY + 2. yarı skoru hariç)
 MIN_LEG_ODD = 1.70     # oranı bunun altındaki hiçbir seçim kupona alınmaz
 MAX_PER_MATCH = 2     # bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır
+MAX_SHARED = 1        # iki bekleyen kupon en fazla 1 ortak maç paylaşır (her kupon farklı bir kombinasyon)
 BIG_SIZES = [4, 5, 6]  # her türde ayrıca 4'lü, 5'li ve 6'lı birer kupon
 UST45_SIZES = [4, 5]   # 4.5 / 5.5 Üst: ayrı 4'lü ve 5'li kuponlar (bu seçimler %36'ya ulaşmadığı için o kuraldan muaf)
 SURPRISE_SIZES = [4, 5]  # İY/MS 1/X, 2/X, 1/2, 2/1: sadece iddaa oranlı, ayrı 4'lü ve 5'li kuponlar (%36 kuralından muaf)
@@ -206,18 +208,40 @@ def best_per_match(cands, score):
     return sorted(best.values(), key=score, reverse=True)
 
 
+class Limits:
+    """Tüm bekleyen kuponlar için maç sınırları: maç başına en fazla MAX_PER_MATCH kupon,
+    iki kupon arasında en fazla MAX_SHARED ortak maç."""
+    def __init__(self):
+        self.cnt, self.sets = Counter(), []
+
+    def add(self, ids):
+        ids = set(ids)
+        self.cnt.update(ids)
+        self.sets.append(ids)
+
+    def free(self, mid):
+        return self.cnt[mid] < MAX_PER_MATCH
+
+    def ok(self, ids):
+        return all(len(ids & s) <= MAX_SHARED for s in self.sets)
+
+
 def free(cnt, mid):
-    return cnt is None or cnt[mid] < MAX_PER_MATCH
+    return cnt is None or cnt.free(mid)
+
+
+def fits(cnt, ids):
+    return cnt is None or cnt.ok(set(ids))
 
 
 def take(cnt, legs):
     if cnt is not None:
-        cnt.update(l["id"] for l in legs)
+        cnt.add(l["id"] for l in legs)
 
 
 def best_coupons(picks, kind, now, min_odd, count=2, used=(), sizes=None, tag="", cnt=None):
     """Toplam oranı >= min_odd olan, tutma olasılığı en yüksek 2-5 maçlık (veya sizes) kuponlar (maçlar çakışmaz).
-    cnt: maç başına bekleyen kupon sayısı; MAX_PER_MATCH'e ulaşan maç kullanılmaz."""
+    cnt (Limits): MAX_PER_MATCH'e ulaşan maç kullanılmaz, başka bir kuponla MAX_SHARED'den fazla ortak maç olmaz."""
     out, used = [], set(used)
     for _ in range(count):
         pool = [x for x in picks if x["id"] not in used and free(cnt, x["id"])][:POOL]
@@ -230,7 +254,7 @@ def best_coupons(picks, kind, now, min_odd, count=2, used=(), sizes=None, tag=""
                 if odd < min_odd:
                     continue
                 p = prod(l["p"] for l in legs)
-                if best is None or p > best[0]:
+                if (best is None or p > best[0]) and fits(cnt, (l["id"] for l in legs)):
                     best = (p, odd, legs)
         if not best:
             break
@@ -388,9 +412,13 @@ def score_legs(events, now, t1):
 
 
 def pick_legs(legs, n, mine, cnt):
-    """En olası n maç: MAX_PER_MATCH'e ulaşanlar alınmaz, bu türde henüz kullanılmayanlar önce."""
+    """En olası n maç: MAX_PER_MATCH'e ulaşanlar alınmaz, bu türde henüz kullanılmayanlar önce;
+    başka bir kuponla MAX_SHARED'den fazla ortak maç olmaz."""
     ok = [l for l in legs if free(cnt, l["id"])]
-    part = sorted(ok, key=lambda l: l["id"] in mine)[:n]  # sıralama kararlı: olasılık sırası korunur
+    part = []
+    for l in sorted(ok, key=lambda l: l["id"] in mine):  # sıralama kararlı: olasılık sırası korunur
+        if len(part) < n and fits(cnt, [x["id"] for x in part] + [l["id"]]):
+            part.append(l)
     if len(part) == n:
         mine.update(l["id"] for l in part)
         take(cnt, part)
@@ -674,11 +702,11 @@ def main():
     t = datetime.fromtimestamp(now, TR)
     slot = f"{t.date().isoformat()}-{t.hour // SLOT_HOURS}"
     if force or state.get("last_slot") != slot:
-        used, cnt = {}, Counter()
+        used, cnt = {}, Limits()
         for c in coupons:
             if c["status"] == "bekliyor":
                 used.setdefault(c["kind"], set()).update(l["id"] for l in c["legs"])
-                cnt.update({l["id"] for l in c["legs"]})
+                cnt.add(l["id"] for l in c["legs"])
         made = daily_set(events, table, now, used=used, cnt=cnt)
         made += score_coupons(events, now, used=used.get("skor", set()), cnt=cnt)
         made += skor3_coupons(events, now, used=used.get("skor3", set()), cnt=cnt)
