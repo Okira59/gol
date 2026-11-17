@@ -5,7 +5,7 @@ Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0)
 William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
 - Her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından her türden en fazla 2 kupon: İY/MS, İY 1.5/2.5 Üst,
   3.5/4.5/5.5 Üst, MS (1-X-2), İY Karşılıklı Gol Var, İY skoru (sadece iddaa oranı), yüksek oranlı (seçim başına 2.40-6.00)
-  ve İY + 2. yarı skoru. Ayrıca her türden 4'lü, 5'li ve 6'lı birer kupon
+  ve İY + 2. yarı skoru. Bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır. Ayrıca her türden 4'lü, 5'li ve 6'lı birer kupon
   ve sadece 4.5 / 5.5 Üst'ten 4'lü ve 5'li, İY/MS 1/X, 2/X, 1/2, 2/1'den (sadece iddaa oranı) 4'lü ve 5'li kuponlar
   (bu ikisi %36 kuralından muaf). Tutma olasılığı %36'nın
   (İY + 2. yarı skoru hariç) ve oranı 1.70'in altındaki hiçbir seçim kupona alınmaz. Her türde tutma
@@ -21,6 +21,7 @@ import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
+from collections import Counter
 from itertools import combinations
 from math import prod
 
@@ -34,6 +35,7 @@ MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
 HIGH_MIN_P = 0.20
 MIN_LEG_P = 0.36       # tutma olasılığı bunun altındaki hiçbir maç kupona alınmaz (İY + 2. yarı skoru hariç)
 MIN_LEG_ODD = 1.70     # oranı bunun altındaki hiçbir seçim kupona alınmaz
+MAX_PER_MATCH = 2     # bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır
 BIG_SIZES = [4, 5, 6]  # her türde ayrıca 4'lü, 5'li ve 6'lı birer kupon
 UST45_SIZES = [4, 5]   # 4.5 / 5.5 Üst: ayrı 4'lü ve 5'li kuponlar (bu seçimler %36'ya ulaşmadığı için o kuraldan muaf)
 SURPRISE_SIZES = [4, 5]  # İY/MS 1/X, 2/X, 1/2, 2/1: sadece iddaa oranlı, ayrı 4'lü ve 5'li kuponlar (%36 kuralından muaf)
@@ -203,11 +205,21 @@ def best_per_match(cands, score):
     return sorted(best.values(), key=score, reverse=True)
 
 
-def best_coupons(picks, kind, now, min_odd, count=2, used=(), sizes=None, tag=""):
-    """Toplam oranı >= min_odd olan, tutma olasılığı en yüksek 2-5 maçlık (veya sizes) kuponlar (maçlar çakışmaz)."""
+def free(cnt, mid):
+    return cnt is None or cnt[mid] < MAX_PER_MATCH
+
+
+def take(cnt, legs):
+    if cnt is not None:
+        cnt.update(l["id"] for l in legs)
+
+
+def best_coupons(picks, kind, now, min_odd, count=2, used=(), sizes=None, tag="", cnt=None):
+    """Toplam oranı >= min_odd olan, tutma olasılığı en yüksek 2-5 maçlık (veya sizes) kuponlar (maçlar çakışmaz).
+    cnt: maç başına bekleyen kupon sayısı; MAX_PER_MATCH'e ulaşan maç kullanılmaz."""
     out, used = [], set(used)
     for _ in range(count):
-        pool = [x for x in picks if x["id"] not in used][:POOL]
+        pool = [x for x in picks if x["id"] not in used and free(cnt, x["id"])][:POOL]
         best = None
         for n in (sizes or range(MIN_LEGS, MAX_LEGS + 1)):
             if n > len(pool):
@@ -223,6 +235,7 @@ def best_coupons(picks, kind, now, min_odd, count=2, used=(), sizes=None, tag=""
             break
         p, odd, legs = best
         used |= {l["id"] for l in legs}
+        take(cnt, legs)
         order = (lambda l: -l["p"]) if kind in BY_P else (lambda l: l["ts"])
         out.append({"cid": f"{kind}-{now}-{tag}{len(out)}", "kind": kind, "created": now,
                     "legs": sorted(legs, key=order), "odd": round(odd, 2),
@@ -315,9 +328,10 @@ def ht_score_legs(events, now, t1):
     return legs
 
 
-def daily_set(events, table, now, t1=None, used=None):
+def daily_set(events, table, now, t1=None, used=None, cnt=None):
     """Bir dilimin kuponları: DAILY_SET'teki her türden en fazla 2 kupon. Bir maç aynı türün
-    bekleyen kuponlarında bir kez kullanılır; tutma olasılığı MIN_LEG_P altındaki maçlar alınmaz."""
+    bekleyen kuponlarında bir kez kullanılır, tüm bekleyen kuponlarda en fazla MAX_PER_MATCH kez;
+    tutma olasılığı MIN_LEG_P altındaki maçlar alınmaz."""
     t1 = t1 or day_end(now)
     used = used or {}
     out = []
@@ -333,11 +347,11 @@ def daily_set(events, table, now, t1=None, used=None):
         u = used.get(kind, ())
         if kind in OWN_SIZES:
             for n in OWN_SIZES[kind]:
-                out += best_coupons(c, kind, now, min_odd, count=2, used=u, sizes=[n], tag=f"b{n}-")
+                out += best_coupons(c, kind, now, min_odd, count=2, used=u, sizes=[n], tag=f"b{n}-", cnt=cnt)
             continue
-        out += best_coupons(c, kind, now, min_odd, used=u)
+        out += best_coupons(c, kind, now, min_odd, used=u, cnt=cnt)
         for n in BIG_SIZES:
-            out += best_coupons(c, kind, now, min_odd, count=1, used=u, sizes=[n], tag=f"b{n}-")
+            out += best_coupons(c, kind, now, min_odd, count=1, used=u, sizes=[n], tag=f"b{n}-", cnt=cnt)
     return out
 
 
@@ -372,17 +386,26 @@ def score_legs(events, now, t1):
     return legs
 
 
-def score_coupons(events, now, t1=None):
-    """İY + 2. yarı skor kuponları: 4, 5 ve 6 maçlık, en olası maçlardan (maçlar çakışmaz).
+def pick_legs(legs, n, mine, cnt):
+    """En olası n maç: MAX_PER_MATCH'e ulaşanlar alınmaz, bu türde henüz kullanılmayanlar önce."""
+    ok = [l for l in legs if free(cnt, l["id"])]
+    part = sorted(ok, key=lambda l: l["id"] in mine)[:n]  # sıralama kararlı: olasılık sırası korunur
+    if len(part) == n:
+        mine.update(l["id"] for l in part)
+        take(cnt, part)
+        return part
+    return None
+
+
+def score_coupons(events, now, t1=None, used=(), cnt=None):
+    """İY + 2. yarı skor kuponları: 4, 5 ve 6 maçlık, en olası maçlardan (mümkünse maçlar çakışmaz).
     Oran = iddaa '1. Yarı/Maç Sonucu Skorları' oranlarının çarpımı."""
-    legs, out, i = score_legs(events, now, t1 or day_end(now)), [], 0
-    distinct = len(legs) >= sum(SCORE_SIZES)  # yeterli maç yoksa kuponlar aynı en olası maçları paylaşır
+    legs = [l for l in score_legs(events, now, t1 or day_end(now)) if l["id"] not in used]
+    out, mine = [], set()
     for n in SCORE_SIZES:
-        part = legs[i:i + n] if distinct else legs[:n]
-        if len(part) < n:
+        part = pick_legs(legs, n, mine, cnt)
+        if not part:
             break
-        if distinct:
-            i += n
         p = prod(l["p"] for l in part)
         out.append({"cid": f"skor-{now}-{len(out)}", "kind": "skor", "created": now,
                     "legs": sorted(part, key=lambda l: l["ts"]), "odd": round(prod(l["odd"] for l in part), 2),
@@ -390,7 +413,7 @@ def score_coupons(events, now, t1=None):
     return out
 
 
-def skor3_coupons(events, now, t1=None, used=()):
+def skor3_coupons(events, now, t1=None, used=(), cnt=None):
     """İY / 2. yarı / MS skoru kuponları (model): her maç için en olası MS skoru ve onu oluşturan en olası
     İY + 2. yarı ayrımı. 4, 5 ve 6 maçlık; MS skoru olasılığı en yüksek maçlardan (maçlar çakışmaz).
     iddaa'da MS / 2. yarı skoru bahsi olmadığı için oran yerine Bet365 / William Hill MS skor oranı sadece bilgi."""
@@ -412,14 +435,11 @@ def skor3_coupons(events, now, t1=None, used=()):
             leg["ref"] = o
         legs.append(leg)
     legs.sort(key=lambda l: -l["p_ft"])
-    out, i = [], 0
-    distinct = len(legs) >= sum(SCORE_SIZES)
+    out, mine = [], set()
     for n in SCORE_SIZES:
-        part = legs[i:i + n] if distinct else legs[:n]
-        if len(part) < n:
+        part = pick_legs(legs, n, mine, cnt)
+        if not part:
             break
-        if distinct:
-            i += n
         c = {"cid": f"skor3-{now}-{len(out)}", "kind": "skor3", "created": now,
              "legs": sorted(part, key=lambda l: l["ts"]), "status": "bekliyor"}
         for k in ("ht", "sh", "ft"):
@@ -612,15 +632,14 @@ def main():
     t = datetime.fromtimestamp(now, TR)
     slot = f"{t.date().isoformat()}-{t.hour // SLOT_HOURS}"
     if force or state.get("last_slot") != slot:
-        used = {}
+        used, cnt = {}, Counter()
         for c in coupons:
             if c["status"] == "bekliyor":
                 used.setdefault(c["kind"], set()).update(l["id"] for l in c["legs"])
-        made = daily_set(events, table, now, used=used)
-        sc = [c for c in score_coupons(events, now)
-              if not used.get("skor", set()) & {l["id"] for l in c["legs"]}]
-        made += sc
-        made += skor3_coupons(events, now, used=used.get("skor3", set()))
+                cnt.update({l["id"] for l in c["legs"]})
+        made = daily_set(events, table, now, used=used, cnt=cnt)
+        made += score_coupons(events, now, used=used.get("skor", set()), cnt=cnt)
+        made += skor3_coupons(events, now, used=used.get("skor3", set()), cnt=cnt)
         state["last_slot"] = slot
     state["iyms_top"] = iyms_top(events, table, now)
     state["iykg_top"] = iykg_top(events, table, now)
