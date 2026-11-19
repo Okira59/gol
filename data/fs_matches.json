@@ -63,6 +63,7 @@
 "0GwGq3Hd":{"id":"0GwGq3Hd","ts":1787335200,"lg":"SAUDI ARABIA: Saudi Professional League","h":"Al Faisaly","a":"Neom SC","ja":"2BS09wwH","jb":"zPQ87H7T","fh":0,"fa":2,"hh":0,"ha":0,"path":"saudi-arabia/saudi-professional-league"},
 "0GyRFBMj":{"id":"0GyRFBMj","ts":1788022800,"lg":"ISRAEL: Ligat ha'Al","h":"Hap. Ramat Gan","a":"H. Beer Sheva","ja":"GInvRloA","jb":"MHEB8tVr","fh":1,"fa":2,"hh":0,"ha":0,"path":"israel/ligat-ha-al"},
 "0I0WP3pI":{"id":"0I0WP3pI","ts":1788288300,"lg":"ENGLAND: League Two","h":"Accrington","a":"Grimsby","ja":"zXMlcGSP","jb":"W28Kifjm","fh":2,"fa":2,"hh":1,"ha":2,"path":"england/league-two"},
+"0ID26d8N":{"id":"0ID26d8N","ts":1795044600,"lg":"BRAZIL: Serie A","h":"Flamengo RJ","a":"Athletico-PR","ja":"8AjMZ2kl","jb":"tx4TXtK0","fh":2,"fa":1,"hh":2,"ha":1,"path":"brazil/serie-a"},
 "0IEA5o0m":{"id":"0IEA5o0m","ts":1791050400,"lg":"NETHERLANDS: Eerste Divisie","h":"Den Bosch","a":"Dordrecht","ja":"hUCvNrw3","jb":"0fGnLM7F","fh":1,"fa":1,"hh":0,"ha":0,"path":"netherlands/eerste-divisie"},
 "0IHGU6qT":{"id":"0IHGU6qT","ts":1789335000,"lg":"USA: MLS","h":"Chicago Fire","a":"New England Revolution","ja":"hrpkdZEO","jb":"tvPbGx0t","fh":1,"fa":2,"hh":0,"ha":1,"path":"usa/mls"},
 "0IIId0C4":{"id":"0IIId0C4","ts":1789223400,"lg":"GERMANY: 3. Liga","h":"Alemannia Aachen","a":"Regensburg","ja":"byHqDBDc","jb":"61KiBkrA","fh":2,"fa":2,"hh":2,"ha":1,"path":"germany/3-liga"},
@@ -610,6 +611,7 @@
 "6HjEtrT7":{"id":"6HjEtrT7","ts":1794072600,"lg":"IRELAND: Premier Division - Relegation","h":"UC Dublin","a":"Drogheda","ja":"S8xAusD4","jb":"KrZ1s3rh","fh":2,"fa":1,"hh":1,"ha":1,"path":"ireland/premier-division"},
 "6J34Qh36":{"id":"6J34Qh36","ts":1792638600,"lg":"MEXICO: Liga MX - Apertura","h":"Santos Laguna","a":"UNAM Pumas","ja":"dzZVyUxp","jb":"40xvz87d","fh":2,"fa":0,"hh":1,"ha":0,"path":"mexico/liga-mx"},
 "6JBvFlx2":{"id":"6JBvFlx2","ts":1792863000,"lg":"ITALY: Serie B","h":"Arezzo","a":"Benevento","ja":"8paGFiX8","jb":"vXLmcqHs","fh":0,"fa":3,"hh":0,"ha":0,"path":"italy/serie-b"},
+"6JIGDDFj":{"id":"6JIGDDFj","ts":1795048200,"lg":"BRAZIL: Serie A","h":"Gremio","a":"Bahia","ja":"nLiMvkXp","jb":"ERq82hPi","fh":0,"fa":0,"hh":0,"ha":0,"path":"brazil/serie-a"},
 "6JLtCg5T":{"id":"6JLtCg5T","ts":1789214400,"lg":"SPAIN: LaLiga2","h":"Andorra","a":"Real Sociedad B","ja":"Gbnaar6L","jb":"nswVgMTr","fh":1,"fa":3,"hh":0,"ha":3,"path":"spain/laliga2"},
 "6JPFdGKr":{"id":"6JPFdGKr","ts":1792944900,"lg":"FRANCE: Ligue 1","h":"Rennes","a":"Strasbourg","ja":"GjpKs2Hs","jb":"MmmSutnf","fh":3,"fa":0,"hh":2,"ha":0,"path":"france/ligue-1"},
 "6LA5T5Wi":{"id":"6LA5T5Wi","ts":1792687500,"lg":"EUROPE: Conference League - League phase","h":"Nordsjaelland","a":"CSKA Sofia","ja":"UJZoZkpR","jb":"02QHTT7l","fh":2,"fa":2,"hh":0,"ha":1,"path":"europe/conference-league"},
@@ -680,6 +682,7 @@
 "6eXhdz43":{"id":"6eXhdz43","ts":1787940900,"lg":"SLOVENIA: Prva liga","h":"Aluminij","a":"Koper","ja":"pItJy0at","jb":"U569HdEO","fh":0,"fa":1,"hh":0,"ha":0,"path":"slovenia/prva-liga"},
 "6eewvhrH":{"id":"6eewvhrH","ts":1788012000,"lg":"ENGLAND: Championship","h":"Southampton","a":"Millwall","ja":"QVCXazem","jb":"YeGubEPa","fh":5,"fa":1,"hh":2,"ha":1,"path":"england/championship"},
 "6esnK0ZA":{"id":"6esnK0ZA","ts":1786640400,"lg":"EUROPE: Conference League - Qualification","h":"Tromso (Nor)","a":"CFR Cluj (Rou)","ja":"d4GZubpI","jb":"OjIRsKF5","fh":2,"fa":1,"hh":1,"ha":0,"path":"europe/conference-league"},
+"6ezUMHh4":{"id":"6ezUMHh4","ts":1795048200,"lg":"BRAZIL: Serie A","h":"Corinthians","a":"Botafogo RJ","ja":"jkn9pK36","jb":"bFkHrbYI","fh":4,"fa":0,"hh":2,"ha":0,"path":"brazil/serie-a"},
 "6gA8eJNE":{"id":"6gA8eJNE","ts":1788804000,"lg":"SERBIA: Mozzart Bet Super Liga","h":"OFK Beograd Mozzart Bet","a":"IMT Novi Beograd","ja":"bs0RIMA5","jb":"pbbZG0uI","fh":1,"fa":1,"hh":1,"ha":0,"path":"serbia/mozzart-bet-super-liga"},
 "6gQG5xMb":{"id":"6gQG5xMb","ts":1787856300,"lg":"EUROPE: Conference League - Qualification","h":"Rijeka (Cro)","a":"Midtjylland (Den)","ja":"xzzQs06U","jb":"4MyIqMyI","fh":1,"fa":4,"hh":1,"ha":1,"path":"europe/conference-league"},
 "6gUfyiyp":{"id":"6gUfyiyp","ts":1788714000,"lg":"SLOVAKIA: Nike liga","h":"Ruzomberok","a":"Trnava","ja":"SYHiHNpp","jb":"YVKaF1Fd","fh":1,"fa":1,"hh":1,"ha":0,"path":"slovakia/nike-liga"},
@@ -5440,5 +5443,6 @@
 "zwfaPpKb":{"id":"zwfaPpKb","ts":1792850400,"lg":"FINLAND: Veikkausliiga - Championship Group","h":"Gnistan","a":"AC Oulu","ja":"MigJ8pqp","jb":"f5iR6ODd","fh":3,"fa":4,"hh":1,"ha":3,"path":"finland/veikkausliiga"},
 "zwoTV54c":{"id":"zwoTV54c","ts":1791694800,"lg":"SOUTH KOREA: K League 1","h":"Gwangju FC","a":"Ulsan HD","ja":"xA2Lbubs","jb":"AN0TdJSg","fh":4,"fa":3,"hh":2,"ha":2,"path":"south-korea/k-league-1"},
 "zyFLGRSI":{"id":"zyFLGRSI","ts":1786636800,"lg":"EUROPE: Conference League - Qualification","h":"Flora (Est)","a":"Inter Escaldes (And)","ja":"6DWwX21m","jb":"vRUoVtWa","fh":0,"fa":4,"hh":0,"ha":1,"path":"europe/conference-league"},
+"zySpJZiT":{"id":"zySpJZiT","ts":1795044600,"lg":"BRAZIL: Serie A","h":"Cruzeiro","a":"Palmeiras","ja":"rP2rnXvB","jb":"jk6jpB9N","fh":2,"fa":1,"hh":0,"ha":0,"path":"brazil/serie-a"},
 "zyZq2xcL":{"id":"zyZq2xcL","ts":1793043000,"lg":"FRANCE: Ligue 1","h":"PSG","a":"Lyon","ja":"hE62PK1D","jb":"p8glmOgK","fh":2,"fa":0,"hh":0,"ha":0,"path":"france/ligue-1"}
 }
