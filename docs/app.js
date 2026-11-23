@@ -435,19 +435,17 @@ function renderKupon() {
     kg.forEach((l, i) => (h += `<tr><td>${i + 1}</td><td>${fmtT(l.ts)}</td><td class="l">${esc(l.lg)}</td><td class="l">${esc(l.h)} - ${esc(l.a)}${l.bk && l.bk !== "iddaa" ? ` <span class="note">(${esc(l.bk)})</span>` : ""}</td><td>${l.odd.toFixed(2)}</td><td>%${f1(l.p * 100)}</td><td>%${f1(l.p0 * 100)}</td></tr>`));
     h += `</table></div><p class="note">İY KG Var: ilk yarıda iki takımın da gol atması. Bu bahis nadir tutar (maçların ~%21'i); olasılıklar tahmindir.</p>`;
   }
-  const kh = (KUPON.iykg_hist || []).filter((x) => x.r != null);
+  const kh = (KUPON.iykg_hist || []).filter((x) => x.r != null && recent(x.ts));
   if (kh.length) {
     const won = kh.filter((x) => x.r);
-    h += `<h2>İY Karşılıklı Gol Var: listede verilen maçlardan tutanlar <span class="note">(en yeniden eskiye)</span></h2>
+    h += `<h2>İY Karşılıklı Gol Var: listede verilen maçlardan tutanlar <span class="note">(son ${DAYS_KEEP} gün, en yeniden eskiye; güne tıklayınca açılır)</span></h2>
       <p class="note">Listede verilip sonuçlanan <b>${kh.length}</b> maçtan <b>${won.length}</b> tanesinde İY KG Var tuttu (%${f1((won.length / kh.length) * 100)}); bu maçların listedeki ortalama tutma olasılığı %${f1((kh.reduce((s, x) => s + x.p, 0) / kh.length) * 100)} idi. Oran ve olasılık, maçın listeye ilk girdiği andaki değerdir.</p>`;
     if (won.length) {
-      h += `<div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Oran</th><th>Olasılık</th><th>Skor (İY / MS)</th></tr>`;
-      won.forEach((l) => (h += `<tr><td>${fmtT(l.ts)}</td><td class="l">${esc(l.lg)}</td><td class="l">${esc(l.h)} - ${esc(l.a)}${l.bk && l.bk !== "iddaa" ? ` <span class="note">(${esc(l.bk)})</span>` : ""}</td><td>${l.odd.toFixed(2)}</td><td>%${f1(l.p * 100)}</td><td>${esc(l.score)} <span class="pos">✓</span></td></tr>`));
-      h += `</table></div>`;
+      h += dayGroups(won, `<th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Oran</th><th>Olasılık</th><th>Skor (İY / MS)</th>`, (l) => `<tr><td>${HM(l.ts)}</td><td class="l">${esc(l.lg)}</td><td class="l">${esc(l.h)} - ${esc(l.a)}${l.bk && l.bk !== "iddaa" ? ` <span class="note">(${esc(l.bk)})</span>` : ""}</td><td>${l.odd.toFixed(2)}</td><td>%${f1(l.p * 100)}</td><td>${esc(l.score)} <span class="pos">✓</span></td></tr>`);
     }
   }
-  const past = done.sort((a, b) => wonAt(b) - wonAt(a)).slice(0, 40);
-  if (past.length) { h += `<h2>Tutan kuponlar <span class="note">(en son tutandan eskiye)</span></h2>`; past.forEach((c) => (h += couponCard(c, false))); }
+  const past = done.filter((c) => recent(wonAt(c))).sort((a, b) => wonAt(b) - wonAt(a));
+  if (past.length) h += `<h2>Tutan kuponlar <span class="note">(son ${DAYS_KEEP} gün, en yeniden eskiye; güne tıklayınca açılır)</span></h2>` + couponDays(past);
   h += `<p class="note">Uyarı: Geçmiş testte (son 45 gün) model olasılıkları gerçekleşenle uyumluydu ama kuponların uzun vadede kâr ettiği görülmedi. Bahis şirketinin marjı nedeniyle kâr garantisi yoktur.</p>`;
   el.innerHTML = h;
 }
@@ -456,12 +454,15 @@ const DAYS_KEEP = 30;
 const recent = (ts) => ts >= Date.now() / 1000 - DAYS_KEEP * 86400;
 const HM = (ts) => new Date(ts * 1000).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" });
 // Satırları TR gününe göre katlanır bloklara ayırır (güne tıklayınca açılır); rows en yeniden eskiye sıralı
-function dayGroups(rows, head, row) {
+function daySections(items, ts, unit, body, open = false) {
   const days = [];
-  for (const x of rows) { const d = TRDAY(x.ts); if (!days.length || days[days.length - 1][0] !== d) days.push([d, []]); days[days.length - 1][1].push(x); }
-  return days.map(([d, xs]) => `<details class="day"><summary><b>${d}</b> <span class="note">· ${xs.length} tutan maç</span></summary>
-    <div class="scroll"><table><tr>${head}</tr>${xs.map(row).join("")}</table></div></details>`).join("");
+  for (const x of items) { const d = TRDAY(ts(x)); if (!days.length || days[days.length - 1][0] !== d) days.push([d, []]); days[days.length - 1][1].push(x); }
+  return days.map(([d, xs]) => `<details class="day"${open ? " open" : ""}><summary><b>${d}</b> <span class="note">· ${xs.length} ${unit}</span></summary>${body(xs)}</details>`).join("");
 }
+function dayGroups(rows, head, row, unit = "tutan maç") {
+  return daySections(rows, (x) => x.ts, unit, (xs) => `<div class="scroll"><table><tr>${head}</tr>${xs.map(row).join("")}</table></div>`);
+}
+const couponDays = (cs) => daySections(cs, wonAt, "tutan kupon", (xs) => xs.map((c) => couponCard(c, false)).join(""));
 // Kuponlardaki İY/MS 1/X, 2/X, 1/2, 2/1 seçimlerinden tutanlar (kupon yatsa da), gün gün
 function surprizPanel() {
   const hs = (KUPON.surpriz_hist || []).filter((x) => x.r != null && recent(x.ts)), won = hs.filter((x) => x.r);
@@ -498,8 +499,8 @@ function renderSkorKupon() {
     ready.forEach((c, i) => (h += couponCard(c, i === 0)));
   } else h += `<p class="note">Şu an bekleyen skor kuponu yok. Bir sonraki 8 saatlik taramada, günün kalan maçlarında şartları sağlayan maç olursa kupon hazırlanır.</p>`;
   h += skorHist();
-  const past = done.filter((c) => recent(wonAt(c))).sort((a, b) => wonAt(b) - wonAt(a)).slice(0, 40);
-  if (past.length) { h += `<h2>Tutan skor kuponları <span class="note">(en son tutandan eskiye)</span></h2>`; past.forEach((c) => (h += couponCard(c, false))); }
+  const past = done.filter((c) => recent(wonAt(c))).sort((a, b) => wonAt(b) - wonAt(a));
+  if (past.length) h += `<h2>Tutan skor kuponları <span class="note">(son ${DAYS_KEEP} gün, en yeniden eskiye; güne tıklayınca açılır)</span></h2>` + couponDays(past);
   el.innerHTML = h;
 }
 
@@ -606,7 +607,7 @@ const MK_OPTS = `<option value="">Hepsi</option>` + MK_GROUPS.map(([g, xs]) => `
 function renderTutan() {
   const el = $("#tab-tutan");
   if (!el.innerHTML) {
-    el.innerHTML = `<p class="note">Sonuçlanmış iddaa maçlarında aynı seçim ve aynı orandan (ör. 3.5 Üst 1.88) kaç maç oynandığını ve kaçının tuttuğunu bir arada gösterir. Satıra tıklayınca o oranda tutan maçlar listelenir. Oran, iddaa'nın maç öncesi son oranıdır.</p>
+    el.innerHTML = `<p class="note">Sonuçlanmış iddaa maçlarında aynı seçim ve aynı orandan (ör. 3.5 Üst 1.88) kaç maç oynandığını ve kaçının tuttuğunu bir arada gösterir. Satıra tıklayınca o oranda tutan maçlar gün gün listelenir. Oran, iddaa'nın maç öncesi son oranıdır.</p>
       <div class="filters"><label>Oran <input id="t-odd" type="text" inputmode="decimal" placeholder="örn. 1.88 (boş = hepsi)" style="width:150px"></label>
       <label>Hassasiyet <select id="t-tol"><option value="0">Tam bu oran</option><option value="0.05">± 0.05</option><option value="0.10">± 0.10</option></select></label>
       <label>Market <select id="t-mk">${MK_OPTS}</select></label>
@@ -680,13 +681,12 @@ function renderGunluk() {
     const days = new Map();
     for (const m of ORAN.matches) { const k = dayKey(m[0]); if (!days.has(k)) days.set(k, [m[0], 0]); days.get(k)[1]++; }
     const ds = [...days.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
-    el.innerHTML = `<p class="note">Hangi gün hangi seçimin hangi oranda tuttuğunu gösterir (tüm marketler; ör. Salı · 1.5 Üst 1.88 · İY/MS 1/2 25.00). Sonuçlanmış iddaa maçları, iddaa'nın maç öncesi son oranı. Satıra tıklayınca o gün o oranda tutan maçlar listelenir.</p>
+    el.innerHTML = `<p class="note">Hangi gün hangi seçimin hangi oranda tuttuğunu gösterir (tüm marketler; ör. Salı · 1.5 Üst 1.88 · İY/MS 1/2 25.00). Sonuçlanmış iddaa maçları, iddaa'nın maç öncesi son oranı. Güne tıklayınca o günün tutan oranları açılır; satıra tıklayınca o gün o oranda tutan maçlar listelenir.</p>
       <div class="filters"><label>Gün <select id="g-day"><option value="7">Son 7 gün (gün gün)</option>${ds.map(([k, [ts, n]]) => `<option value="${k}">${TRDAY(ts)} (${n} maç)</option>`).join("")}</select></label>
       <label>Market <select id="g-mk">${MK_OPTS}</select></label>
       <label>En düşük oran <input id="g-min" type="text" inputmode="decimal" placeholder="örn. 1,50 (boş = hepsi)" style="width:150px"></label>
       <label>Sıralama <select id="g-sort"><option value="odd">Oran (yüksekten düşüğe)</option><option value="n">Tutan maç sayısı</option><option value="lab">Market</option></select></label></div>
       <div id="g-res"></div>`;
-    if (ds.length) $("#g-day").value = ds[0][0];
   }
   runGunluk();
 }
@@ -697,7 +697,7 @@ function runGunluk() {
   const min = parseFloat(String($("#g-min").value).replace(",", ".")) || 0, so = $("#g-sort").value;
   let days = [...new Set(ORAN.matches.map((m) => dayKey(m[0])))].sort().reverse();
   days = dv === "7" ? days.slice(0, 7) : [dv];
-  const LIM = dv === "7" ? 60 : 400;
+  const LIM = 400;
   GG = [];
   let h = `<p class="note">Son güncelleme: ${fmtT(ORAN.updated)}</p>`;
   for (const d of days) {
@@ -713,23 +713,23 @@ function runGunluk() {
     let rows = [...g.values()].filter((x) => x.w.length);
     rows.sort(so === "n" ? (a, b) => b.w.length - a.w.length || b.o - a.o : so === "lab" ? (a, b) => a.lab.localeCompare(b.lab, "tr") || b.o - a.o : (a, b) => b.o - a.o || b.w.length - a.w.length);
     const tot = rows.length; rows = rows.slice(0, LIM);
-    h += `<h2>${ms.length ? TRDAY(ms[0][0]) : d} <span class="note">(${ms.length} maç · ${tot} seçim / oran tuttu${tot > LIM ? `, ilk ${LIM} gösteriliyor` : ""})</span></h2>`;
-    if (!rows.length) { h += `<p class="note">Bu filtrelerle tutan oran yok.</p>`; continue; }
+    h += `<details class="day"${days.length === 1 ? " open" : ""}><summary><b>${ms.length ? TRDAY(ms[0][0]) : d}</b> <span class="note">· ${ms.length} maç · ${tot} seçim / oran tuttu${tot > LIM ? `, ilk ${LIM} gösteriliyor` : ""}</span></summary>`;
+    if (!rows.length) { h += `<p class="note">Bu filtrelerle tutan oran yok.</p></details>`; continue; }
     h += `<div class="scroll"><table><tr><th class="l">Seçim</th><th>Oran</th><th>Tutan maç</th><th>O gün bu oranda oynanan</th><th class="l">Tutan maçlar</th></tr>`;
     for (const x of rows) {
       const i = GG.push(x) - 1, names = x.w.slice(0, 3).map((m) => `${esc(m[2])} - ${esc(m[3])} <span class="note">(${m[4]} / ${m[5]})</span>`).join(", ");
       h += `<tr data-gg="${i}" style="cursor:pointer"><td class="l"><b>${esc(x.lab)}</b></td><td><b>${x.o.toFixed(2)}</b></td><td>${x.w.length}</td><td>${x.n}</td><td class="l">${names}${x.w.length > 3 ? ` <span class="note">+${x.w.length - 3}</span>` : ""}</td></tr>`;
       h += `<tr class="gg-d" id="gg-${i}" style="display:none"><td colspan="5" class="l">${x.w.map((m) => `${fmtT(m[0])} · ${esc(m[1])} · <b>${esc(m[2])} - ${esc(m[3])}</b> · İY ${m[4]} / MS ${m[5]}`).join("<br>")}</td></tr>`;
     }
-    h += `</table></div>`;
+    h += `</table></div></details>`;
   }
   res.innerHTML = h;
 }
 function tutanDetail(i) {
   const x = TG[i]; if (!x) return;
-  let h = `<h2>${esc(x.lab)} ${x.o.toFixed(2)}: tutan ${x.w.length} maç <span class="note">(${x.n} maçtan)</span></h2><div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Skor (İY / MS)</th></tr>`;
-  for (const m of x.w) h += `<tr><td>${fmtT(m[0])}</td><td class="l">${esc(m[1])}</td><td class="l">${esc(m[2])} - ${esc(m[3])}</td><td>${m[4]} / ${m[5]} <span class="pos">✓</span></td></tr>`;
-  $("#t-det").innerHTML = h + "</table></div>";
+  const w = x.w.slice().sort((a, b) => b[0] - a[0]);
+  $("#t-det").innerHTML = `<h2>${esc(x.lab)} ${x.o.toFixed(2)}: tutan ${x.w.length} maç <span class="note">(${x.n} maçtan; güne tıklayınca açılır)</span></h2>` +
+    daySections(w, (m) => m[0], "tutan maç", (ms) => `<div class="scroll"><table><tr><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th>Skor (İY / MS)</th></tr>${ms.map((m) => `<tr><td>${HM(m[0])}</td><td class="l">${esc(m[1])}</td><td class="l">${esc(m[2])} - ${esc(m[3])}</td><td>${m[4]} / ${m[5]} <span class="pos">✓</span></td></tr>`).join("")}</table></div>`);
   $("#t-det").scrollIntoView({ behavior: "smooth" });
 }
 
