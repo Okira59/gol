@@ -405,7 +405,7 @@ function renderKupon() {
   const now = Date.now() / 1000;
   const active = all.filter((c) => c.status === "bekliyor" && Math.max(...c.legs.map((l) => l.ts)) + 2.5 * 3600 > now);
   const done = all.filter((c) => c.status === "kazandı");
-  let h = `<p class="note">Sistem <b>her 4 saatte bir</b> (00, 04, 08, 12, 16, 20 dilimleri) güncel bülteni tarar ve <b>günün kalan iddaa maçlarından</b> kupon hazırlar: İY/MS, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS), İY Karşılıklı Gol Var ve yüksek oranlıdan en fazla 2'şer adet (2-5 maçlık) ve ayrıca her türden <b>4'lü, 5'li ve 6'lı birer kupon</b>, sadece <b>4.5 / 5.5 Üst</b> seçimlerinden 4'lü ve 5'li, sadece iddaa'da oranı olan <b>İY/MS 1/X, 2/X, 1/2, 2/1</b> seçimlerinden olasılığı en yüksek maçlarla 4'lü ve 5'li ayrı kuponlar (bu seçimler %36'ya ulaşmadığı için o kuraldan muaftır),
+  let h = surprizPanel() + `<p class="note">Sistem <b>her 8 saatte bir</b> (00, 08, 16 dilimleri) güncel bülteni tarar ve <b>günün kalan iddaa maçlarından</b> kupon hazırlar: İY/MS, İY 1.5 / 2.5 Üst, 3.5 / 4.5 / 5.5 Üst, Maç sonucu (MS), İY Karşılıklı Gol Var ve yüksek oranlıdan en fazla 2'şer adet (2-5 maçlık) ve ayrıca her türden <b>4'lü, 5'li ve 6'lı birer kupon</b>, sadece <b>4.5 / 5.5 Üst</b> seçimlerinden 4'lü ve 5'li, sadece iddaa'da oranı olan <b>İY/MS 1/X, 2/X, 1/2, 2/1</b> seçimlerinden olasılığı en yüksek maçlarla 4'lü ve 5'li ayrı kuponlar (bu seçimler %36'ya ulaşmadığı için o kuraldan muaftır),
     <b>Tutma olasılığı %36'nın altındaki</b> <b>ve oranı 1.70'in altındaki hiçbir seçim kupona alınmaz</b>; bu yüzden bazı dilimlerde bazı türlerden kupon çıkmayabilir. Kuponlarda toplam oranı <b>5.50'nin altında kupon yoktur</b> (yüksek oranlıda en az 10). Bu şartı sağlayan kombinasyonlar arasından tutma olasılığı en yüksek olan seçilir.
     Oranlar iddaa'dan; iddaa'da olmayan market (çoğunlukla İY/MS) için aynı maçın Bet365 / William Hill oranı kullanılır (tabloda belirtilir).
     <b>Bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır ve iki kupon en fazla 1 ortak maç paylaşır</b> (her kupon farklı bir kombinasyon). İY skoru ve MS skoru kuponları <b>Skor Kuponları (İY / MS)</b> sekmesindedir.
@@ -413,7 +413,7 @@ function renderKupon() {
   const sum = (kind) => { const w = done.filter((c) => c.kind === kind);
     return `<div class="card"><div class="t">${KIND[kind]}</div><div class="v">${w.length}</div><div class="s">${w.length ? "tutan kupon" : "henüz tutan kupon yok"}</div></div>`; };
   h += `<div class="cards">${ORDER.map(sum).join("")}</div>`;
-  if (!active.length) h += `<p class="note">Şu an bekleyen kupon yok. Bir sonraki 4 saatlik taramada, günün kalan maçlarında şartları sağlayan maç olursa kupon hazırlanır.</p>`;
+  if (!active.length) h += `<p class="note">Şu an bekleyen kupon yok. Bir sonraki 8 saatlik taramada, günün kalan maçlarında şartları sağlayan maç olursa kupon hazırlanır.</p>`;
   const ready = active.slice().sort((a, b) => b.p - a.p);
   if (ready.length) {
     h += `<h2>Hazır kuponlar <span class="note">(tutma olasılığı en yüksekten düşüğe)</span></h2>`;
@@ -451,6 +451,26 @@ function renderKupon() {
   el.innerHTML = h;
 }
 
+// Kuponlardaki İY/MS 1/X, 2/X, 1/2, 2/1 seçimlerinden tutanlar (kupon yatsa da), gün gün
+function surprizPanel() {
+  const hs = (KUPON.surpriz_hist || []).filter((x) => x.r != null), won = hs.filter((x) => x.r);
+  const by = {};
+  for (const x of hs) { const s = (by[x.pick] = by[x.pick] || [0, 0]); s[1]++; if (x.r) s[0]++; }
+  let h = `<div class="card" style="display:block;text-align:left;margin-bottom:14px"><h2 style="margin-top:0">İY/MS 1/X, 2/X, 1/2, 2/1: kuponlarda tutan maçlar <span class="note">(kupon yatsa da; en yeniden eskiye)</span></h2>
+    <p class="note">Kuponlarda yer alıp sonuçlanan <b>${hs.length}</b> sürpriz seçimden <b>${won.length}</b> tanesi tuttu.` +
+    (hs.length ? " " + Object.entries(by).sort().map(([k, [w, n]]) => `${esc(k.replace("İY/MS ", ""))}: <b>${w} / ${n}</b>`).join(" · ") : "") + `</p>`;
+  if (!won.length) return h + `<p class="note">Henüz tutan sürpriz seçim yok. Tutan maçlar burada gün gün listelenecek.</p></div>`;
+  h += `<div class="scroll"><table><tr><th>Gün</th><th>Saat</th><th class="l">Lig</th><th class="l">Maç</th><th class="l">Tahmin</th><th>Oran</th><th>Olasılık</th><th>Skor (İY / MS)</th></tr>`;
+  let day = "";
+  for (const x of won) {
+    const d = TRDAY(x.ts), t = new Date(x.ts * 1000).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" });
+    h += `<tr><td>${d === day ? "" : `<b>${d}</b>`}</td><td>${t}</td><td class="l">${esc(x.lg)}</td><td class="l">${esc(x.h)} - ${esc(x.a)}${x.bk && x.bk !== "iddaa" ? ` <span class="note">(${esc(x.bk)})</span>` : ""}</td>
+      <td class="l"><b>${esc(x.pick)}</b></td><td>${x.odd.toFixed(2)}</td><td>%${f1(x.p * 100)}</td><td>${esc(x.score)} <span class="pos">✓</span></td></tr>`;
+    day = d;
+  }
+  return h + `</table></div></div>`;
+}
+
 const wonAt = (c) => Math.max(...c.legs.map((l) => l.ts || 0)) || c.created || 0;
 function renderSkorKupon() {
   const el = $("#tab-skorkupon");
@@ -459,8 +479,8 @@ function renderSkorKupon() {
   const now = Date.now() / 1000;
   const active = all.filter((c) => c.status === "bekliyor" && Math.max(...c.legs.map((l) => l.ts)) + 2.5 * 3600 > now);
   const done = all.filter((c) => c.status === "kazandı");
-  let h = `<p class="note">İlk yarı skoru ve maç sonu skoru kuponları bu sekmede toplanır. Her 4 saatlik dilimde günün kalan iddaa maçlarından hazırlanır. Bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır, iki kupon en fazla 1 ortak maç paylaşır. Son güncelleme: ${fmtT(KUPON.updated)}</p>
-    <p class="note"><b>İY skoru:</b> iddaa'nın <b>"1. Yarı Skoru"</b> bahsi açık maçlar kullanılır ve iddaa seçenekleri arasından modele göre en olası ilk yarı skoru seçilir. Oranlar iddaa oranıdır; Bet365 / William Hill oranı sadece kıyas için yazılır.</p>
+  let h = `<p class="note">İlk yarı skoru ve maç sonu skoru kuponları bu sekmede toplanır. Her 8 saatlik dilimde (00, 08, 16) günün kalan iddaa maçlarından hazırlanır. Bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır, iki kupon en fazla 1 ortak maç paylaşır. Son güncelleme: ${fmtT(KUPON.updated)}</p>
+    <p class="note"><b>İY skoru:</b> sadece ilk yarı skorlarından oluşan 3'lü ve 4'lü kuponlar. iddaa'nın <b>"1. Yarı Skoru"</b> bahsi açık maçlar kullanılır ve iddaa seçenekleri arasından modele göre en olası ilk yarı skoru seçilir. En olası İY skoru bile genelde %36'nın altında kaldığı için bu kuponlar %36 kuralından muaftır. Oranlar iddaa oranıdır; Bet365 / William Hill oranı sadece kıyas için yazılır.</p>
     <p class="note"><b>İY + 2. yarı skoru:</b> sadece iddaa'da <b>"1. Yarı/Maç Sonucu Skorları"</b> bahsi açık maçlar kullanılır. Her maç için en olası İY skoru + 2. yarı skoru seçilir; iddaa'da oynanacak seçenek İY skoru / MS skorudur (MS = İY + 2. yarı). Oranlar iddaa oranıdır.</p>
     <p class="note"><b>İY / 2. yarı / MS skoru:</b> her maç için modelin en olası MS skoru ve onu oluşturan en olası İY + 2. yarı skoru yazılır. Kupon üç ayrı kupon gibi sonuçlanır: tüm İY skorları tutarsa "İY skorları", tüm 2. yarı skorları tutarsa "2. yarı skorları", tüm MS skorları tutarsa "MS skorları" TUTTU olur. iddaa'da MS ve 2. yarı skoru bahsi olmadığı için Bet365 / William Hill MS skor oranı sadece bilgi amaçlıdır.</p>`;
   const sum = (kind) => { const w = done.filter((c) => c.kind === kind);
@@ -470,7 +490,7 @@ function renderSkorKupon() {
   if (ready.length) {
     h += `<h2>Hazır skor kuponları <span class="note">(tutma olasılığı en yüksekten düşüğe)</span></h2>`;
     ready.forEach((c, i) => (h += couponCard(c, i === 0)));
-  } else h += `<p class="note">Şu an bekleyen skor kuponu yok. Bir sonraki 4 saatlik taramada, günün kalan maçlarında şartları sağlayan maç olursa kupon hazırlanır.</p>`;
+  } else h += `<p class="note">Şu an bekleyen skor kuponu yok. Bir sonraki 8 saatlik taramada, günün kalan maçlarında şartları sağlayan maç olursa kupon hazırlanır.</p>`;
   h += skorHist();
   const past = done.sort((a, b) => wonAt(b) - wonAt(a)).slice(0, 40);
   if (past.length) { h += `<h2>Tutan skor kuponları <span class="note">(en son tutandan eskiye)</span></h2>`; past.forEach((c) => (h += couponCard(c, false))); }

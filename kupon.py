@@ -3,12 +3,12 @@
 Kuponlar sadece iddaa bültenindeki maçlardan, iddaa oranlarıyla kurulur.
 Olasılık modeli: her seçimin marjı arındırılmış oran olasılığı (p0), son 3 ayın maçlarında (Bet365 /
 William Hill oranları) aynı p0 aralığındaki seçimlerin gerçekte ne sıklıkla tuttuğuna göre düzeltilir.
-- Her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından her türden en fazla 2 kupon: İY/MS, İY 1.5/2.5 Üst,
+- Her 8 saatlik dilimde (TR) bir kez, günün kalan maçlarından her türden en fazla 2 kupon: İY/MS, İY 1.5/2.5 Üst,
   3.5/4.5/5.5 Üst, MS (1-X-2), İY Karşılıklı Gol Var, İY skoru (sadece iddaa oranı), yüksek oranlı (seçim başına 2.40-6.00)
   ve İY + 2. yarı skoru. Bir maç (aynı takımlar) bekleyen kuponların en fazla 2'sinde yer alır,
   iki kupon en fazla 1 ortak maç paylaşır. Ayrıca her türden 4'lü, 5'li ve 6'lı birer kupon
-  ve sadece 4.5 / 5.5 Üst'ten 4'lü ve 5'li, İY/MS 1/X, 2/X, 1/2, 2/1'den (sadece iddaa oranı) 4'lü ve 5'li kuponlar
-  (bu ikisi %36 kuralından muaf). Tutma olasılığı %36'nın
+  ve sadece 4.5 / 5.5 Üst'ten 4'lü ve 5'li, İY/MS 1/X, 2/X, 1/2, 2/1'den (sadece iddaa oranı) 4'lü ve 5'li,
+  sadece İY skorundan 3'lü ve 4'lü kuponlar (bu üçü %36 kuralından muaf). Tutma olasılığı %36'nın
   (İY + 2. yarı skoru hariç) ve oranı 1.70'in altındaki hiçbir seçim kupona alınmaz. Her türde tutma
   olasılığı en yüksek seçimler kullanılır. iddaa'da olmayan marketler (çoğunlukla İY/MS) aynı maçın Bet365 /
   William Hill oranıyla tamamlanır. Ayrıca 9 İY/MS seçeneğinin her biri ve İY KG Var için en olası maçlar listelenir.
@@ -31,7 +31,7 @@ DATA = os.path.join(BASE, "data")
 OUT = os.path.join(BASE, "docs", "data", "kuponlar.json")
 TR = timezone(timedelta(hours=3))
 
-SLOT_HOURS = 4         # her 4 saatlik dilimde (TR) bir kez, günün kalan maçlarından kupon hazırlanır
+SLOT_HOURS = 8         # her 8 saatlik dilimde (TR: 00, 08, 16) bir kez, günün kalan maçlarından kupon hazırlanır
 MIN_LEAD = 15 * 60     # maç başlamasına en az 15 dk kalmış olmalı
 HIGH_MIN_P = 0.20
 MIN_LEG_P = 0.36       # tutma olasılığı bunun altındaki hiçbir maç kupona alınmaz (İY + 2. yarı skoru hariç)
@@ -41,7 +41,8 @@ MAX_SHARED = 1        # iki bekleyen kupon en fazla 1 ortak maç paylaşır (her
 BIG_SIZES = [4, 5, 6]  # her türde ayrıca 4'lü, 5'li ve 6'lı birer kupon
 UST45_SIZES = [4, 5]   # 4.5 / 5.5 Üst: ayrı 4'lü ve 5'li kuponlar (bu seçimler %36'ya ulaşmadığı için o kuraldan muaf)
 SURPRISE_SIZES = [4, 5]  # İY/MS 1/X, 2/X, 1/2, 2/1: sadece iddaa oranlı, ayrı 4'lü ve 5'li kuponlar (%36 kuralından muaf)
-OWN_SIZES = {"ust45": UST45_SIZES, "iyms_s": SURPRISE_SIZES}
+HT_SCORE_SIZES = [3, 4]  # sadece İY skoru: ayrı 3'lü ve 4'lü kuponlar (en olası İY skoru ~%35, %36 kuralından muaf)
+OWN_SIZES = {"ust45": UST45_SIZES, "iyms_s": SURPRISE_SIZES, "iyskor": HT_SCORE_SIZES}
 # Günde 12 kupon: her türden 2 adet, tutma olasılığı en yüksek seçimlerden.
 # Kupon 2-5 maçlık; toplam oran en az MIN_ODD (yüksek oranda HIGH_TOTAL).
 # (tür, seçilebilecek marketler, tek seçim oran aralığı, en düşük toplam oran)
@@ -64,6 +65,7 @@ KINDS = {k for k, *_ in DAILY_SET} | {"skor", "skor3"}
 SCORE_KINDS = ("iyskor", "skor", "skor3")
 BY_P = {"iykg", "iyskor", "iyms_s"}  # bu türlerde kupon maçları tutma olasılığına göre (yukarıdan aşağı) sıralanır
 IYKG = ("ikgv", "ikgy")
+SURPRISE = ("hf10", "hf20", "hf12", "hf21")
 KEEP_DAYS = 30
 SHRINK = 40
 
@@ -543,6 +545,22 @@ def score_track(state, coupons, now):
                                 key=lambda h: -h["ts"])
 
 
+def surprise_track(state, coupons, results, now):
+    """Kuponlardaki İY/MS sürpriz (1/X, 2/X, 1/2, 2/1) seçimlerinin sonuçları (kupon yatsa da saklanır)."""
+    hist = {f"{h['id']}|{h['k']}": h for h in state.get("surpriz_hist", [])}
+    for c in coupons:
+        for l in c["legs"]:
+            if l.get("k") in SURPRISE:
+                hist.setdefault(f"{l['id']}|{l['k']}", {k: l[k] for k in ("id", "ts", "lg", "h", "a", "k", "pick", "odd", "p", "bk") if k in l})
+    for h in hist.values():
+        m = results.get(h["id"])
+        if "r" not in h and m and "fh" in m and m.get("hh") is not None:
+            h["r"] = bool(outcome(h["k"], m["fh"], m["fa"], m["hh"], m["ha"]))
+            h["score"] = f"{m['hh']}-{m['ha']} / {m['fh']}-{m['fa']}"
+    state["surpriz_hist"] = sorted((h for h in hist.values() if h["ts"] >= now - KEEP_DAYS * 86400),
+                                   key=lambda h: -h["ts"])
+
+
 def iykg_track(state, top, results, now):
     """İY KG Var listesinde verilen maçların geçmişi (ilk listelendiği oran / olasılık) ve sonuçları."""
     hist = {h["id"]: h for h in state.get("iykg_hist", [])}
@@ -689,6 +707,7 @@ def main():
     results = {**load("fs_matches.json"), **iddaa}
     settle(coupons, results)
     score_track(state, coupons, now)
+    surprise_track(state, coupons, results, now)
     # sonuçlananlardan sadece tutan kuponlar saklanır
     coupons = [c for c in coupons if c["status"] in ("bekliyor", "kazandı")]
 
