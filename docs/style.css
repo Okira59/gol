@@ -52,3 +52,6 @@ footer{padding:14px 20px;color:#64748b;font-size:12px;border-top:1px solid #1f29
 .sk .t{font-weight:600;margin-bottom:4px;color:#cbd5e1}
 .sk table{margin:0;width:100%}
 .skl tr.sel td{background:#1e293b}
+details.day{margin:6px 0;border:1px solid #334155;border-radius:8px;background:#1e293b}
+details.day>summary{cursor:pointer;padding:9px 12px;list-style-position:inside}
+details.day[open]>summary{border-bottom:1px solid #334155}
